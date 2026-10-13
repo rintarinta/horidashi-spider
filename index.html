@@ -1,0 +1,1594 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"></head><body>
+<title>掘り出しスパイダ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
+<style>
+/* Layout: one card table — status bar, supply row (stock / pocket / skills / sets), ten columns, event log */
+:root{
+  --table:#18202e; --table-hi:#22304a; --line:#34425e; --panel:#1e2839;
+  --ink:#ebe6da; --muted:#9aa3b6;
+  --brass:#d6ad62; --brass-dim:#8a7243;
+  --face:#f5f0e3; --face-ink:#1d2230; --red:#b3362b;
+  --back:#2c4572; --back-2:#253b63;
+  --good:#5fc4ad; --bad:#e2795d; --risk:#b49cf2;
+  --f-ui:"Zen Kaku Gothic New","Hiragino Sans","Yu Gothic",system-ui,sans-serif;
+  --f-rank:"Cormorant Garamond","Times New Roman",serif;
+  --cw:80px; --ch:114px; --gap:10px;
+  color-scheme:dark;
+}
+[hidden]{display:none!important}
+html,body{min-height:100%}
+body{background:radial-gradient(ellipse 1100px 800px at 50% 0,var(--table-hi),var(--table)) no-repeat var(--table);color:var(--ink);font-family:var(--f-ui);font-size:14px}
+.wrap{max-width:1120px;margin:0 auto;padding-inline:16px;padding-block:12px 32px;display:flex;flex-direction:column;gap:12px}
+button{font-family:inherit}
+:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
+
+/* header */
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 20px}
+.brand{display:flex;align-items:baseline;gap:10px;margin-right:auto}
+.brand h1{margin:0;font-size:20px;font-weight:700;letter-spacing:.06em}
+.brand h1 b{color:var(--brass);font-weight:700}
+.mode-tag{font:inherit;font-size:12px;color:var(--muted);background:transparent;border:1px solid var(--line);border-radius:999px;padding:1px 10px;cursor:pointer}
+.mode-tag:hover{border-color:var(--brass);color:var(--ink)}
+.rec-wrap{overflow-x:auto}
+.rec{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums;margin:6px 0}
+.rec th,.rec td{padding:5px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+.rec thead th{font-size:11px;color:var(--muted);font-weight:500}
+.rec tbody th{text-align:left;font-weight:500}
+.stats{display:flex;gap:16px;margin:0}
+.stats div{display:flex;align-items:baseline;gap:6px}
+.stats dt{font-size:11px;color:var(--muted);letter-spacing:.08em}
+.stats dd{margin:0;font-weight:700;font-variant-numeric:tabular-nums;font-size:16px}
+.actions{display:flex;flex-wrap:wrap;gap:6px}
+.btn{font-size:13px;font-weight:500;color:var(--ink);background:transparent;border:1px solid var(--line);border-radius:6px;padding:6px 12px;cursor:pointer;line-height:1.3}
+.btn:hover:not(:disabled){border-color:var(--brass);color:#fff}
+.btn:disabled{opacity:.38;cursor:default}
+.btn.primary{background:var(--brass);border-color:var(--brass);color:#1b1a16;font-weight:700}
+.btn.primary:hover{background:#e3bd76;color:#1b1a16}
+
+/* supply row */
+.supply{display:flex;flex-wrap:wrap;gap:12px;align-items:stretch}
+.box{background:color-mix(in srgb,var(--panel) 85%,transparent);border:1px solid var(--line);border-radius:10px;padding:8px 10px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.box.grow{flex:1 1 220px}
+.lbl{font-size:11px;color:var(--muted);letter-spacing:.1em}
+.row{display:flex;gap:8px;align-items:flex-start}
+.row.wr{flex-wrap:wrap}
+#stock{display:flex;gap:10px;align-items:flex-start}
+.stockpile{position:relative;width:var(--cw);height:var(--ch);border-radius:calc(var(--cw)*.08);border:1px dashed var(--line);background:transparent;padding:0;cursor:pointer;color:var(--ink)}
+.stockpile .back{position:absolute;inset:0;border-radius:inherit;background:repeating-linear-gradient(45deg,var(--back) 0 5px,var(--back-2) 5px 10px);border:1px solid var(--brass-dim);box-shadow:3px 3px 0 -1px var(--back-2),3px 3px 0 0 var(--brass-dim)}
+.stockpile .cnt{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:var(--table);border:1px solid var(--brass-dim);border-radius:999px;padding:1px 8px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;font-size:13px}
+.stockpile .cnt small{font-size:10px;margin-left:1px;color:var(--muted)}
+.stockpile:disabled{cursor:default}
+.stockpile.blocked .back{filter:saturate(.3) brightness(.7)}
+.fore{display:flex;flex-direction:column;gap:4px}
+.minis{display:grid;grid-template-columns:repeat(5,auto);gap:3px}
+.mini{display:inline-flex;align-items:center;gap:1px;background:var(--face);color:var(--face-ink);border-radius:3px;padding:1px 4px;font:700 13px/1.2 var(--f-rank)}
+.mini.red{color:var(--red)}
+.mini svg{width:10px;height:10px}
+.pslot{position:relative;width:var(--cw);height:var(--ch);border-radius:calc(var(--cw)*.08);border:1px dashed var(--brass-dim)}
+.pslot.can-drop{border-color:var(--brass);background:color-mix(in srgb,var(--brass) 10%,transparent)}
+.pslot.hover{background:color-mix(in srgb,var(--brass) 25%,transparent)}
+.empty-note{font-size:12px;color:var(--muted);max-width:9em;line-height:1.5}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:999px;padding:3px 10px 3px 3px;cursor:pointer;font-size:13px}
+.chip:hover:not(:disabled){border-color:var(--good)}
+.chip.none{opacity:.45}
+.chip[aria-pressed="true"]{background:color-mix(in srgb,var(--good) 22%,transparent);border-color:var(--good)}
+.chip .n{font-variant-numeric:tabular-nums;color:var(--muted)}
+.kb{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;font-size:12px;font-weight:700;color:#16202c;flex:none}
+.kb.good{background:var(--good)}.kb.bad{background:var(--bad)}.kb.risk{background:var(--risk)}
+.sets{display:grid;grid-template-columns:repeat(4,22px);gap:4px}
+.setslot{width:22px;height:28px;border-radius:4px;border:1px dashed var(--line);display:grid;place-items:center}
+.setslot.full{background:var(--face);border:1px solid var(--face);color:var(--face-ink)}
+.setslot.full.red{color:var(--red)}
+.setslot svg{width:13px;height:13px}
+
+/* hint */
+.hint{display:flex;align-items:center;gap:10px;flex-wrap:wrap;border:1px solid var(--good);background:color-mix(in srgb,var(--good) 12%,transparent);border-radius:8px;padding:6px 10px;font-size:13px}
+
+/* tableau */
+.tableau{display:grid;grid-template-columns:repeat(10,var(--cw));gap:var(--gap);justify-content:center;user-select:none;-webkit-user-select:none}
+.col{display:flex;flex-direction:column;gap:3px;border-radius:8px}
+.col-head{height:18px;display:flex;gap:2px;justify-content:center;align-items:center}
+.tag{font-size:10px;font-weight:700;border-radius:4px;padding:0 4px;line-height:16px;color:#16202c;white-space:nowrap}
+.tag.bad{background:var(--bad)}.tag.risk{background:var(--risk)}
+.pile{position:relative;height:var(--pileh,120px)}
+.slot{position:absolute;left:0;top:0;width:var(--cw);height:var(--ch);border-radius:calc(var(--cw)*.08);border:1px dashed var(--line)}
+.col.sealed .slot{border-color:var(--risk);border-style:solid;background:color-mix(in srgb,var(--risk) 8%,transparent)}
+.col.locked .card.up{filter:grayscale(.5) brightness(.8)}
+.col.can-drop .slot,.col.can-drop .card:last-child{box-shadow:0 0 0 2px var(--brass)}
+.col.hover .slot,.col.hover .card:last-child{box-shadow:0 0 0 3px var(--brass),0 0 18px color-mix(in srgb,var(--brass) 50%,transparent)}
+.peekmode .col{cursor:pointer}
+.peekmode .col:hover .slot{box-shadow:0 0 0 2px var(--good)}
+
+/* cards */
+.card{position:absolute;left:0;width:var(--cw);height:var(--ch);border-radius:calc(var(--cw)*.08);box-shadow:0 1px 2px rgba(0,0,0,.45);touch-action:none;cursor:grab}
+.card.up{background:var(--face);color:var(--face-ink);border:1px solid #d9d1bd}
+.card.red{color:var(--red)}
+.card .rk{position:absolute;top:calc(var(--cw)*.03);left:max(2px,calc(var(--cw)*.07));display:flex;align-items:center;gap:1px;font:700 max(13px,calc(var(--cw)*.29))/1 var(--f-rank);letter-spacing:-.02em}
+.card .rk svg{width:max(8px,calc(var(--cw)*.2));height:max(8px,calc(var(--cw)*.2))}
+.card .big{position:absolute;left:50%;bottom:14%;width:46%;height:46%;transform:translateX(-50%);opacity:.92}
+.card.down{background:repeating-linear-gradient(45deg,var(--back) 0 5px,var(--back-2) 5px 10px);border:1px solid var(--brass-dim);cursor:default}
+.card.down .pkv{position:absolute;top:1px;left:3px;display:inline-flex;align-items:center;gap:1px;background:color-mix(in srgb,var(--face) 92%,transparent);color:var(--face-ink);border-radius:3px;padding:0 3px;font:700 calc(var(--cw)*.15)/1.1 var(--f-rank)}
+.card.down .pkv.red{color:var(--red)}
+.card.down .pkv svg{width:calc(var(--cw)*.12);height:calc(var(--cw)*.12)}
+.evm{position:absolute;top:1px;right:max(1px,calc(var(--cw)*.04));min-width:max(12px,calc(var(--cw)*.17));height:max(11px,calc(var(--cw)*.15));border-radius:999px;display:grid;place-items:center;font-size:max(9px,calc(var(--cw)*.12));font-weight:700;line-height:1;color:#16202c;padding:0 2px}
+.evm.unk{background:var(--brass);box-shadow:0 0 0 1px rgba(0,0,0,.35),0 0 6px color-mix(in srgb,var(--brass) 70%,transparent)}
+.evm.flash{animation:evpop .8s cubic-bezier(.2,.9,.3,1.4)}
+@keyframes evpop{0%{transform:scale(.3) rotate(-20deg);opacity:0}50%{transform:scale(1.6)}100%{transform:none;opacity:1}}
+.evm.hid{box-shadow:0 0 0 1px rgba(0,0,0,.35),0 0 7px var(--evc,transparent)}
+.evm.hid.good{--evc:var(--good)}.evm.hid.bad{--evc:var(--bad)}.evm.hid.risk{--evc:var(--risk)}
+.evm.good{background:var(--good)}.evm.bad{background:var(--bad)}.evm.risk{background:var(--risk)}
+.bombb{position:absolute;top:calc(var(--cw)*.03);right:calc(var(--cw)*.05);background:var(--risk);color:#16202c;border-radius:4px;padding:0 3px;font-size:calc(var(--cw)*.14);font-weight:700;line-height:1.3;font-variant-numeric:tabular-nums}
+.card.hint-src{box-shadow:0 0 0 3px var(--brass),0 0 18px color-mix(in srgb,var(--brass) 70%,transparent);z-index:5}
+.col.hint-dst .slot,.col.hint-dst .card:last-child,.pslot.hint-dst,.stockpile.hint-dst{box-shadow:0 0 0 3px var(--brass),0 0 18px color-mix(in srgb,var(--brass) 60%,transparent)}
+#fx{position:fixed;inset:0;pointer-events:none;z-index:66;overflow:hidden}
+.fx-banner{position:absolute;left:50%;top:42%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;--c:var(--good)}
+.fx-orb{position:relative;z-index:1;width:112px;height:112px;border-radius:50%;display:grid;place-items:center;font-size:56px;font-weight:700;color:#16202c;background:radial-gradient(circle at 35% 30%,color-mix(in srgb,var(--c) 55%,#fff),var(--c) 60%);box-shadow:0 0 0 6px color-mix(in srgb,var(--c) 28%,transparent),0 0 70px var(--c)}
+.fx-rays{position:absolute;left:50%;top:56px;width:380px;height:380px;margin:-190px 0 0 -190px;border-radius:50%;background:repeating-conic-gradient(color-mix(in srgb,var(--c) 40%,transparent) 0 7deg,transparent 7deg 20deg);-webkit-mask:radial-gradient(circle,#000 25%,transparent 68%);mask:radial-gradient(circle,#000 25%,transparent 68%);animation:fxspin 4s linear infinite}
+.fx-title,.fx-sub{background:rgba(14,19,30,.82);border-radius:999px;padding:2px 16px}
+.fx-title{position:relative;font-size:24px;font-weight:700;letter-spacing:.1em;color:var(--ink);text-shadow:0 2px 14px rgba(0,0,0,.8)}
+.fx-sub{position:relative;font-size:12px;font-weight:700;letter-spacing:.35em;color:var(--c);text-shadow:0 1px 8px rgba(0,0,0,.8)}
+.fx-desc{position:relative;max-width:min(380px,84vw);font-size:13px;line-height:1.6;color:var(--ink);background:rgba(14,19,30,.88);border:1px solid color-mix(in srgb,var(--c) 45%,transparent);border-radius:10px;padding:6px 14px;margin-top:4px}
+.fx-skip{position:relative;font-size:11px;color:var(--muted);letter-spacing:.1em;margin-top:2px;text-shadow:0 1px 6px rgba(0,0,0,.9)}
+.fx-p{position:absolute;width:8px;height:8px;border-radius:50%;background:var(--c);box-shadow:0 0 8px var(--c)}
+.fx-box{position:absolute;border-radius:10px;box-shadow:0 0 0 3px var(--c),0 0 26px var(--c),inset 0 0 22px color-mix(in srgb,var(--c) 40%,transparent)}
+.fx-scan{position:absolute;overflow:hidden;border-radius:10px;box-shadow:0 0 0 2px var(--c)}
+.fx-scan::after{content:"";position:absolute;left:0;right:0;height:35%;top:-35%;background:linear-gradient(transparent,color-mix(in srgb,var(--c) 60%,transparent),transparent);animation:fxscan .85s ease-in-out 2}
+.fx-vig{position:absolute;inset:0;box-shadow:inset 0 0 160px 20px var(--c)}
+@keyframes fxspin{to{transform:rotate(360deg)}}
+@keyframes fxscan{from{top:-35%}to{top:100%}}
+.pop{position:fixed;z-index:70;width:min(300px,calc(100vw - 24px));background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;box-shadow:0 14px 34px rgba(0,0,0,.5);display:flex;flex-direction:column;gap:8px;font-size:13px;line-height:1.6}
+.pop p{margin:0}
+.pop-h{display:flex;align-items:center;gap:8px}
+.pop-h b{font-size:15px}
+.pop-n{margin-left:auto;font-size:12px;color:var(--muted)}
+.menu{display:flex;flex-direction:column;gap:2px;margin:-4px -6px}
+.menu-item{font:inherit;font-size:14px;text-align:left;color:var(--ink);background:none;border:0;border-radius:6px;padding:8px 10px;cursor:pointer}
+.menu-item:hover,.menu-item:focus-visible{background:color-mix(in srgb,var(--brass) 16%,transparent)}
+.pop-btns{display:flex;justify-content:flex-end;gap:6px}
+.tip{position:fixed;z-index:75;pointer-events:none;max-width:240px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:12px;line-height:1.55;color:var(--ink);box-shadow:0 8px 20px rgba(0,0,0,.45)}
+.tip b,.pop .tipbody b{display:block;font-size:13px;margin-bottom:2px}
+button.tag{border:0;font-family:inherit;cursor:help}
+.chip{position:relative}
+.chip.new::after{content:"";position:absolute;top:-3px;right:-3px;width:9px;height:9px;border-radius:50%;background:var(--brass);box-shadow:0 0 0 2px var(--table)}
+.toast .tk{display:flex;gap:10px;align-items:flex-start}
+.toast .tk .kb{margin-top:1px;color:#16202c;font-size:12px}
+.chip.hint-dst{box-shadow:0 0 0 3px var(--brass),0 0 16px color-mix(in srgb,var(--brass) 60%,transparent)}
+.hintbtn{border-color:var(--brass-dim);color:var(--brass)}
+.card.sel{box-shadow:0 0 0 3px var(--good),0 2px 6px rgba(0,0,0,.4)}
+.card.lifting{opacity:.25}
+.card.pulse{animation:pulse 1.1s ease-out 1}
+@keyframes pulse{0%{box-shadow:0 0 0 0 var(--pc,var(--brass))}60%{box-shadow:0 0 0 10px transparent}100%{box-shadow:0 1px 2px rgba(0,0,0,.45)}}
+.card.shake{animation:shake .3s 1}
+@keyframes shake{25%{translate:-3px 0}75%{translate:3px 0}}
+.ghost{position:fixed;left:0;top:0;width:var(--cw);pointer-events:none;z-index:40;filter:drop-shadow(0 8px 14px rgba(0,0,0,.5))}
+.ghost .card{cursor:grabbing}
+
+/* log */
+.logbox{display:flex;flex-direction:column;gap:6px}
+.loghead{display:flex;align-items:center;gap:12px}
+.linkbtn{font:inherit;font-size:12px;color:var(--brass);background:none;border:0;padding:0;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+#log.open{max-height:260px;overflow:auto}
+#log{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}
+#log li{display:flex;gap:8px;align-items:baseline}
+#log li:first-child{color:var(--ink)}
+.dot{width:8px;height:8px;border-radius:50%;flex:none;transform:translateY(-1px);background:var(--muted)}
+.dot.good{background:var(--good)}.dot.bad{background:var(--bad)}.dot.risk{background:var(--risk)}.dot.set{background:var(--brass)}
+
+/* toast */
+.toast{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:60;background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--tc,var(--brass));border-radius:8px;padding:8px 14px;max-width:min(440px,calc(100vw - 32px));box-shadow:0 10px 30px rgba(0,0,0,.45);animation:rise .2s ease-out}
+.toast b{display:block;font-size:14px}
+.toast span{font-size:12px;color:var(--muted)}
+@keyframes rise{from{opacity:0;translate:0 8px}}
+
+/* modal */
+.modal{position:fixed;inset:0;z-index:80;background:rgba(8,12,20,.66);display:grid;place-items:center;padding:16px}
+.dialog{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px;width:min(520px,100%);max-height:calc(100vh - 32px);overflow:auto;display:flex;flex-direction:column;gap:12px;box-shadow:0 20px 50px rgba(0,0,0,.5)}
+.dialog h2{margin:0;font-size:18px;text-wrap:balance}
+.mbody{font-size:14px;line-height:1.7;color:var(--ink)}
+.mbody p{margin:0 0 8px}
+.mbtns{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.picks{display:grid;gap:8px}
+.pick{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;align-items:center;text-align:left;background:transparent;border:1px solid var(--line);border-radius:8px;padding:8px 10px;color:var(--ink);cursor:pointer}
+.pick small{grid-column:2;color:var(--muted);font-size:12px}
+.pick:hover:not(:disabled){border-color:var(--good)}
+.pick.picked{border-color:var(--good);background:color-mix(in srgb,var(--good) 15%,transparent)}
+.pick:disabled{cursor:default}
+.evlist{display:grid;gap:6px;margin:4px 0 12px}
+.evlist div{display:grid;grid-template-columns:auto 6.5em 1fr;gap:8px;align-items:center;font-size:13px}
+.evlist small{color:var(--muted)}
+.mbody h3{font-size:13px;margin:12px 0 6px;color:var(--muted);letter-spacing:.08em}
+.mbody ul{margin:0 0 8px;padding-left:1.2em}
+.form{display:grid;gap:12px}
+.form fieldset{border:1px solid var(--line);border-radius:8px;padding:8px 12px;display:flex;gap:14px;flex-wrap:wrap}
+.form legend{font-size:12px;color:var(--muted);padding:0 4px}
+.form label{display:flex;justify-content:space-between;font-size:13px}
+.form input[type=range]{width:100%;accent-color:var(--brass)}
+.form output{font-variant-numeric:tabular-nums;font-weight:700}
+.muted{color:var(--muted);font-size:12px}
+
+@media (max-width:640px){
+  .brand h1{font-size:17px}
+  .setsbox{display:none}            /* 完成数は上の「完成 n/8」で見える */
+  .supply{gap:8px}
+  .box.grow{flex-basis:100%}
+  .chip{font-size:12px;padding-right:8px}
+  .stats{gap:12px}
+  .box{padding:6px 8px}
+}
+@media (prefers-reduced-motion:reduce){
+  .card.pulse,.card.shake,.toast,.evm.flash{animation:none}
+}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <symbol id="s0" viewBox="0 0 24 24"><path fill="currentColor" d="M12 1.8C9.2 6 3 9.2 3 14.1c0 2.7 2.1 4.6 4.5 4.6 1.6 0 2.9-.7 3.6-1.8-.2 1.9-.9 3.4-2.5 4.9h6.8c-1.6-1.5-2.3-3-2.5-4.9.7 1.1 2 1.8 3.6 1.8 2.4 0 4.5-1.9 4.5-4.6C21 9.2 14.8 6 12 1.8z"/></symbol>
+    <symbol id="s1" viewBox="0 0 24 24"><path fill="currentColor" d="M12 21.2C10.6 19.9 2.5 14.2 2.5 8.6c0-3 2.3-5.3 5.1-5.3 2 0 3.5 1.1 4.4 2.7.9-1.6 2.4-2.7 4.4-2.7 2.8 0 5.1 2.3 5.1 5.3 0 5.6-8.1 11.3-9.5 12.6z"/></symbol>
+    <symbol id="s2" viewBox="0 0 24 24"><path fill="currentColor" d="M12 1.5 20 12 12 22.5 4 12z"/></symbol>
+    <symbol id="s3" viewBox="0 0 24 24"><g fill="currentColor"><circle cx="12" cy="6.8" r="4.3"/><circle cx="6.6" cy="13.3" r="4.3"/><circle cx="17.4" cy="13.3" r="4.3"/><path d="M10.9 11h2.2c.1 4.4.9 7.3 3.1 9.6H7.8c2.2-2.3 3-5.2 3.1-9.6z"/></g></symbol>
+  </defs>
+</svg>
+
+<div id="game" class="wrap">
+  <header class="bar">
+    <div class="brand"><h1>掘り出し<b>スパイダ</b></h1><button class="mode-tag" id="mode-tag" data-act="records" title="記録を見る">マーク2種</button></div>
+    <dl class="stats">
+      <div><dt>手数</dt><dd id="moves">0</dd></div>
+      <div><dt>完成</dt><dd><span id="done">0</span>/8</dd></div>
+      <div><dt>時間</dt><dd id="clock">0:00</dd></div>
+    </dl>
+    <div class="actions">
+      <button class="btn hintbtn" data-act="hint" title="H">ヒント</button>
+      <button class="btn" data-act="undo" id="btn-undo" title="Ctrl+Z">元に戻す</button>
+      <button class="btn" data-act="new">新しいゲーム</button>
+      <button class="btn" data-act="menu" aria-haspopup="true">メニュー</button>
+    </div>
+  </header>
+
+  <section class="supply" aria-label="山札とアイテム">
+    <div class="box"><div class="lbl">山札</div><div id="stock"></div></div>
+    <div class="box"><div class="lbl">ポケット</div><div id="pocket" class="row"></div></div>
+    <div class="box grow"><div class="lbl">スキル</div><div id="skills" class="row wr"></div></div>
+    <div class="box setsbox"><div class="lbl">完成した組</div><div id="sets" class="sets"></div></div>
+  </section>
+
+  <div id="hint" class="hint" hidden></div>
+  <main id="tableau" class="tableau" aria-label="場札"></main>
+
+  <section class="logbox" aria-label="イベントの記録">
+    <div class="loghead"><span class="lbl">イベントの記録</span><button class="linkbtn" data-act="logtoggle" id="logtoggle">すべて表示</button></div>
+    <ol id="log"></ol>
+  </section>
+</div>
+
+<div id="toast" class="toast" hidden role="status" aria-live="polite"></div>
+<div id="pop" class="pop" hidden></div>
+<div id="fx" aria-hidden="true"></div>
+<div id="tip" class="tip" hidden></div>
+<div id="modal" class="modal" hidden><div class="dialog" role="dialog" aria-modal="true"></div></div>
+
+<script>
+(() => {
+'use strict';
+
+/* ---------- 定義 ---------- */
+const SUIT_NAMES = ['スペード','ハート','ダイヤ','クラブ'];
+const RED = [false,true,true,false];
+const RANK = ['','A','2','3','4','5','6','7','8','9','10','J','Q','K'];
+const EV = {
+  peek:  {cat:'good', k:'透', name:'透視',   desc:'選んだ列の裏向きカードと、そこに隠れたイベントが全部見える', item:true},
+  bind:  {cat:'good', k:'束', name:'束ね',   desc:'表向きのカードなら、並び方に関係なく、選んだカードから上を1回まとめて動かせる', item:true},
+  dig:   {cat:'good', k:'掘', name:'発掘',   desc:'選んだ列で、表向きカードのすぐ下にある裏向きカードを1枚めくる', item:true},
+  pocket:{cat:'good', k:'袋', name:'ポケット', desc:'カードを1枚置いておける場所が増える（最大3つ）'},
+  chain: {cat:'bad',  k:'鎖', name:'鎖',     desc:'その列が、次に山札を配るまで動かせなくなる（山札がもうなければ8手のあいだ）。スキルを1つ手放せば防げる'},
+  cave:  {cat:'bad',  k:'崩', name:'落盤',   desc:'両隣の列で、表向きのカードが1枚ずつ裏返る。スキルを1つ手放せば防げる'},
+  bomb:  {cat:'risk', k:'爆', name:'爆弾',   desc:'そのカードを6手以内に動かせば宝箱（良いイベント）。間に合わないと落盤が起きる'},
+  seal:  {cat:'risk', k:'封', name:'封印',   desc:'次に山札を配るまでにその列を空にすると、良いイベントを3つの中から2つ選べる。間に合わないと落盤が起きる'},
+};
+const ITEMS = ['peek','bind','dig'];
+const CAT = {
+  good:{mark:'吉', label:'良いイベント', hint:'スキルかポケットが手に入ります'},
+  bad: {mark:'凶', label:'悪いイベント', hint:'鎖か落盤。スキルを1つ手放せば防げます'},
+  risk:{mark:'賭', label:'リスクのあるイベント', hint:'爆弾か封印。期限内に達成すると報酬、間に合わないと落盤です'},
+};
+const DEF = {suits:1, events:7, bad:20, risk:20, reveal:'next'};
+const REVEAL = {all:'すべて見える', next:'めくる直前だけ見える', none:'見えない'};
+const PRESETS = {easy:{suits:1, events:7, bad:15, risk:15}, normal:{suits:2, events:8, bad:20, risk:20}, hard:{suits:4, events:9, bad:35, risk:25}};
+const KEY_GAME = 'spider-dig-game-v2', KEY_SET = 'spider-dig-settings-v3', KEY_REC = 'spider-dig-records-v1';
+
+/* ---------- 保存 ---------- */
+function load(k){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; }catch(e){ return null; } }
+function store(k,v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+
+let settings = Object.assign({}, DEF, load(KEY_SET) || {});
+let S = null;            // ゲーム状態
+let initialSnap = null;  // 配った直後の状態
+let undoStack = [];
+const ui = {mode:null, bind:false, busy:false, drag:null, pulse:{}, hints:null, hintIdx:-1, hintShow:null, newSkills:new Set(), fxq:[], fxSkip:false, catAt:{}};
+let L = {cw:80, ch:114, gap:10, fdo:14, fuo:27};
+
+const $ = s => document.querySelector(s);
+const els = {
+  game:$('#game'), tab:$('#tableau'), stock:$('#stock'), pocket:$('#pocket'), skills:$('#skills'), sets:$('#sets'),
+  moves:$('#moves'), done:$('#done'), clock:$('#clock'), log:$('#log'), hint:$('#hint'), toast:$('#toast'),
+  modal:$('#modal'), dialog:$('#modal .dialog'), pop:$('#pop'), tip:$('#tip'), undo:$('#btn-undo'), modeTag:$('#mode-tag')
+};
+
+/* ---------- 便利関数 ---------- */
+function rand(){
+  if(S && typeof S.rs==='number'){
+    let t = S.rs = (S.rs + 0x6D2B79F5) | 0;
+    t = Math.imul(t ^ (t>>>15), t | 1); t ^= t + Math.imul(t ^ (t>>>7), t | 61);
+    return ((t ^ (t>>>14)) >>> 0) / 4294967296;
+  }
+  return Math.random();
+}
+const rnd = n => Math.floor(rand()*n);
+const pickOne = a => a[rnd(a.length)];
+function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=rnd(i+1); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+const cardName = c => `${SUIT_NAMES[c.s]}の${RANK[c.r]}`;
+const pool = cat => Object.keys(EV).filter(k => EV[k].cat===cat);
+const esc = s => String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+
+/* ---------- ゲーム生成 ---------- */
+function rollEvent(){
+  const r = Math.random()*100;
+  const cat = r < settings.bad ? 'bad' : r < settings.bad + settings.risk ? 'risk' : 'good';
+  return pickOne(pool(cat));
+}
+function newGame(){
+  S = null;
+  const suits = settings.suits, copies = 8/suits, deck = [];
+  let id = 0;
+  for(let s=0;s<suits;s++) for(let c=0;c<copies;c++) for(let r=1;r<=13;r++) deck.push({id:id++, r, s, up:false, ev:null, pk:false, bomb:0});
+  shuffle(deck);
+  const cols = Array.from({length:10}, () => []);
+  for(let i=0;i<54;i++) cols[i%10].push(deck.pop());
+  cols.forEach(c => { c[c.length-1].up = true; });
+  const downs = shuffle(cols.flatMap(c => c.filter(x => !x.up)));
+  const n = Math.min(settings.events, downs.length);
+  for(let i=0;i<n;i++) downs[i].ev = rollEvent();
+  S = {v:2, rs:(Math.random()*4294967296)|0, suits, cols, stock:deck, done:[], moves:0, elapsed:0, started:false, won:false,
+       pocket:[], inv:{peek:0,bind:0,dig:0}, locks:Array(10).fill(0), seals:Array(10).fill(false), log:[], evTotal:n};
+  addLog('set', `マーク${suits}種・イベント${n}枚で配りました`);
+  const first = pickOne(ITEMS); S.inv[first] = 1;
+  addLog('good', `はじめのスキルとして「${EV[first].name}」を持っています`);
+  initialSnap = JSON.stringify(S);
+  resetUi(); undoStack = []; ui.pulse = {}; ui.catAt = {}; ui.newSkills = new Set([first]); ui.fxq = []; ui.hist = new Set(); remember();
+  save(); render();
+}
+function resetUi(){ ui.mode=null; ui.bind=false; ui.hints=null; ui.hintShow=null; }
+
+/* ---------- ルール判定 ---------- */
+function runOK(col, i){
+  const c = S.cols[col];
+  if(!c[i] || !c[i].up) return false;
+  for(let k=i+1;k<c.length;k++){
+    if(!c[k].up || c[k].r !== c[k-1].r-1 || c[k].s !== c[k-1].s) return false;
+  }
+  return true;
+}
+const CHAIN_DEAL = 99;   // 「次に配るまで」の鎖
+const lockText = t => S.locks[t] >= CHAIN_DEAL ? '次に配るまで' : `あと${S.locks[t]}手`;
+const allUp = (col, i) => S.cols[col].slice(i).every(x => x.up) && i < S.cols[col].length;
+function canGrab(col, i){
+  if(S.locks[col] > 0) return false;
+  return runOK(col,i) || (ui.bind && S.inv.bind>0 && allUp(col,i));
+}
+function canDrop(bottom, t, from){
+  if(t===from || S.locks[t] > 0) return false;
+  const c = S.cols[t];
+  if(!c.length) return true;
+  const top = c[c.length-1];
+  return top.up && top.r === bottom.r+1;
+}
+function tableCount(){ return S.cols.reduce((a,c)=>a+c.length,0) + S.pocket.filter(Boolean).length; }
+function dealState(){
+  if(!S.stock.length) return {ok:false, why:'山札がありません'};
+  if(!S.cols.some(c => !c.length)) return {ok:true};
+  if(tableCount() < 10) return {ok:true};             // 全列を埋められないときは例外で配れる
+  return {ok:false, why:'空いている列があるときは配れません'};
+}
+
+/* ---------- 操作 ---------- */
+function pushUndo(){ ui.hintShow = null; undoStack.push(JSON.stringify(S)); if(undoStack.length>300) undoStack.shift(); }
+function startClock(){
+  if(!S.started){ const r = recFor(S.suits); r.plays++; saveRecords(); }
+  S.started = true;
+}
+/* マークの種類ごとの記録：挑戦回数・クリア回数・最短手数・最短時間 */
+let records = load(KEY_REC) || {};
+function recFor(su){ return records[su] || (records[su] = {plays:0, wins:0, bestMoves:null, bestTime:null}); }
+function saveRecords(){ store(KEY_REC, records); }
+function recordWin(){
+  const r = recFor(S.suits), news = [];
+  r.wins++;
+  if(r.bestMoves==null || S.moves < r.bestMoves){ r.bestMoves = S.moves; news.push('最短手数'); }
+  if(r.bestTime==null || S.elapsed < r.bestTime){ r.bestTime = S.elapsed; news.push('最短時間'); }
+  saveRecords();
+  return news;
+}
+function recordsTable(){
+  const rows = [1,2,4].map(su => { const r = recFor(su);
+    return `<tr><th>マーク${su}種</th><td>${r.plays}</td><td>${r.wins}</td><td>${r.plays ? Math.round(r.wins/r.plays*100)+'%' : '-'}</td><td>${r.bestMoves ?? '-'}</td><td>${r.bestTime!=null ? fmtTime(r.bestTime) : '-'}</td></tr>`; }).join('');
+  return `<div class="rec-wrap"><table class="rec"><thead><tr><th></th><th>挑戦</th><th>クリア</th><th>クリア率</th><th>最短手数</th><th>最短時間</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+function openRecords(){
+  modal({title:'記録', body:recordsTable() + '<p class="muted">1手でも動かしたゲームを「挑戦」として数えています。記録はこのブラウザにだけ保存されます。</p>', buttons:[{label:'閉じる', value:true, primary:true}]});
+}
+
+async function doMove(from, i, to){
+  const bound = !runOK(from,i);
+  pushUndo();
+  const moving = S.cols[from].splice(i);
+  S.cols[to].push(...moving);
+  if(bound){
+    S.inv.bind--; ui.bind = false; addLog('good', `束ねを使って${moving.length}枚まとめて動かした`);
+    const ids = moving.map(c=>c.id);
+    fxLater(async () => { fxUse('bind'); ids.forEach(id => fxBox(cardRect(id), 'good', 1000)); await fxWait(350); });
+  }
+  S.moves++; startClock();
+  await settle(moving.map(c=>c.id));
+}
+async function toPocket(from, slot){
+  pushUndo();
+  const c = S.cols[from].pop();
+  S.pocket[slot] = c;
+  S.moves++; startClock();
+  await settle([c.id]);
+}
+async function fromPocket(slot, to){
+  pushUndo();
+  const c = S.pocket[slot];
+  S.pocket[slot] = null;
+  S.cols[to].push(c);
+  S.moves++; startClock();
+  await settle([c.id]);
+}
+async function deal(){
+  if(ui.busy || S.won || ui.drag) return;
+  resetUi();
+  const st = dealState();
+  if(!st.ok){ toast(st.why, st.why.startsWith('空') ? 'カードを動かして、空いた列を埋めてから配ってください' : '', 'info'); return; }
+  pushUndo();
+  const released = [], broken = [];
+  for(let t=0;t<10;t++){
+    if(S.locks[t] >= CHAIN_DEAL){ S.locks[t] = 0; released.push(t+1); }
+    if(S.seals[t] && S.cols[t].length){ S.seals[t] = false; broken.push(t); }
+  }
+  if(released.length) addLog('good', `山札を配ったので${released.join('・')}列目の鎖が外れた`);
+  for(let t=0;t<10 && S.stock.length;t++){ const c = S.stock.shift(); c.up = true; S.cols[t].push(c); }
+  S.moves++; startClock();
+  await settle([], {broken});
+}
+
+/* 動かしたあとの処理：組の完成 → タイマー → めくり → イベント → 封印 → クリア判定 */
+function remember(){
+  if(!ui.hist) ui.hist = new Set();
+  ui.hist.add(encCols().map(c => c.join(',')).join('|'));
+  if(ui.hist.size > 400) ui.hist.delete(ui.hist.values().next().value);
+}
+async function settle(movedIds, opt={}){
+  ui.busy = true; ui.fxSkip = false;
+  ui.hintShow = null;
+  completeSets();
+  const blasts = opt.tick !== false ? tickTimers(movedIds) : [];
+  for(const col of blasts){
+    note('bad', '爆弾が爆発した', '時間切れで落盤が起きます');
+    render(); await fxBlast();
+    await badEvent('cave', col);
+  }
+  for(const t of (opt.broken || [])){
+    note('bad', `${t+1}列目の封印が崩れた`, '期限までに空にできなかったので、落盤が起きます');
+    render(); await fxBlast('封', '封印崩壊', '期限切れ');
+    await badEvent('cave', t);
+  }
+  let pre = opt.flipped || [];
+  for(let guard=0; guard<60; guard++){
+    const flipped = pre.length ? pre : flipTops(); pre = [];
+    for(const f of flipped){
+      if(f.card.ev){
+        const ev = f.card.ev; f.card.ev = null;
+        await applyEvent(ev, f.col, f.card);
+      }
+    }
+    const completed = completeSets();
+    if(!flipped.length && !completed) break;
+  }
+  await checkSeals();
+  render(); await flushFx();
+  remember();
+  ui.busy = false; ui.fxSkip = false;
+  save(); render();
+  checkWin();
+}
+function completeSets(){
+  let any = false;
+  S.cols.forEach((c,t) => {
+    if(c.length < 13) return;
+    const run = c.slice(-13);
+    if(run[0].r!==13) return;
+    for(let k=0;k<13;k++){ if(!run[k].up || run[k].r!==13-k || run[k].s!==run[0].s) return; }
+    c.splice(-13);
+    S.done.push(run[0].s);
+    any = true;
+    addLog('set', `${SUIT_NAMES[run[0].s]}の組が完成（${S.done.length}/8）`);
+    { const su = run[0].s, n = S.done.length; fxLater(() => fxSet(su, t, n)); }
+    run.filter(x=>x.bomb>0).forEach(x => { x.bomb = 0; const g = grantGood(); addLog('risk', `爆弾を解除して宝箱を開けた：${EV[g].name}`); fxLater(() => fxGet(g)); });
+  });
+  return any;
+}
+function flipTops(){
+  const out = [];
+  S.cols.forEach((c,t) => { const top = c[c.length-1]; if(top && !top.up){ top.up = true; out.push({col:t, card:top}); } });
+  return out;
+}
+/* 鎖を1つ減らし、爆弾を進める。爆発した列の番号を返す */
+function tickTimers(moved){
+  const ms = new Set(moved), blasts = [];
+  for(let t=0;t<10;t++) if(S.locks[t]>0 && S.locks[t]<CHAIN_DEAL) S.locks[t]--;
+  const holders = [];
+  S.cols.forEach((c,t) => c.forEach(x => { if(x.bomb>0) holders.push({x, col:t}); }));
+  S.pocket.forEach(x => { if(x && x.bomb>0) holders.push({x, col:null}); });
+  for(const {x,col} of holders){
+    if(ms.has(x.id)){
+      x.bomb = 0;
+      const g = grantGood();
+      note('risk', '爆弾を解除した', `宝箱から「${EV[g].name}」を手に入れた`);
+      fxLater(() => fxGet(g));
+    }else if(--x.bomb === 0){
+      blasts.push(col==null ? rnd(10) : col);
+    }
+  }
+  return blasts;
+}
+
+/* ---------- イベント ---------- */
+function grantGood(type){
+  const p = pool('good');
+  let k = type || pickOne(p);
+  if(k==='pocket' && S.pocket.length>=3) k = pickOne(p.filter(x=>x!=='pocket'));
+  if(k==='pocket') S.pocket.push(null); else { S.inv[k]++; ui.newSkills.add(k); }
+  return k;
+}
+/* 表向きが2枚以上ある列の、いちばん下の表向きカード（爆弾つきは除く） */
+function flippable(t){
+  const c = S.cols[t]; if(!c) return null;
+  const ups = c.filter(x=>x.up);
+  if(ups.length < 2 || ups[0].bomb) return null;
+  return ups[0];
+}
+function caveTargets(col){
+  const out = [col-1, col+1].filter(t => t>=0 && t<10 && flippable(t));
+  if(out.length) return out;
+  const rest = [...Array(10).keys()].filter(t => t!==col && flippable(t)).sort((a,b) => Math.abs(a-col) - Math.abs(b-col));
+  return rest.slice(0,1);
+}
+/* 悪いイベント：先に内容を決めて見せ、スキルを1つ手放して防ぐか選ばせる */
+async function badEvent(ev, col){
+  const d = EV[ev];
+  const targets = ev==='cave' ? caveTargets(col) : [col];
+  if(!targets.length){ note('bad', `${d.name}は起きなかった`, '裏返せるカードがありませんでした', null, true); return; }
+  render(); await fxEvent(ev, targets.map(colRect));
+  const owned = ITEMS.filter(k => S.inv[k] > 0);
+  let pay = null;
+  if(owned.length){
+    const what = ev==='chain'
+      ? `${col+1}列目に鎖がかかろうとしています。${S.stock.length ? '次に山札を配るまで' : '8手のあいだ'}、この列のカードは動かせず、ここに置くこともできなくなります。`
+      : `${targets.map(t=>t+1).join('・')}列目で、表向きのカードが1枚ずつ裏返ろうとしています。`;
+    pay = await modal({
+      title:`悪いイベント「${d.name}」`,
+      body:`<p>${what}</p><p>スキルを1つ手放すと防げます。</p>`,
+      buttons:[{label:'受ける', value:null}, ...owned.map(k => ({label:`${EV[k].name}を手放して防ぐ`, value:k}))]
+    });
+  }
+  if(pay){
+    S.inv[pay]--;
+    note('good', `「${EV[pay].name}」を手放して${d.name}を防いだ`, '', EV[pay].k);
+    render(); await fxGuard(pay);
+    return;
+  }
+  if(ev==='chain'){
+    S.locks[col] = S.stock.length ? CHAIN_DEAL : 8;
+    note('bad', `${col+1}列目に鎖がかかった`, `${lockText(col)}、この列は動かせません`, null, true);
+  }else{
+    const flipped = targets.map(t => { const x = flippable(t); x.up = false; return `${t+1}列目の${cardName(x)}`; });
+    note('bad', '落盤が起きた', `${flipped.join('と')}が裏返った`, null, true);
+  }
+  render();
+}
+async function applyEvent(ev, col, card){
+  const d = EV[ev];
+  ui.pulse[card.id] = {cat:d.cat, until:Date.now()+1200};
+  render();
+  switch(ev){
+    case 'peek': case 'bind': case 'dig':
+      S.inv[ev]++; ui.newSkills.add(ev);
+      note('good', `「${d.name}」を手に入れた`, `${d.desc}。上の「スキル」から使えます`, d.k);
+      render(); await fxGet(ev); break;
+    case 'pocket': {
+      const g = grantGood('pocket');
+      if(g==='pocket') note('good', 'ポケットが1つ増えた', `カードを1枚置いておけます（いま${S.pocket.length}つ）`, d.k);
+      else note('good', `ポケットはいっぱいなので「${EV[g].name}」を手に入れた`, EV[g].desc, EV[g].k);
+      render(); await fxGet(g);
+      break; }
+    case 'chain': case 'cave':
+      await badEvent(ev, col); break;
+    case 'bomb':
+      card.bomb = 6;
+      note('risk', `${col+1}列目に爆弾`, `${cardName(card)}を6手以内に動かせば宝箱。間に合わないと落盤が起きます`);
+      render(); await fxEvent('bomb', [cardRect(card.id)]); break;
+    case 'seal':
+      S.seals[col] = true;
+      note('risk', `${col+1}列目が封印された`, S.stock.length ? '次に山札を配るまでにこの列を空にすると、良いイベントを3つの中から2つ選べます。間に合わないと落盤' : 'この列を空にすると、良いイベントを3つの中から2つ選べます');
+      render(); await fxEvent('seal', [colRect(col)]); break;
+  }
+  render();
+}
+async function checkSeals(){
+  for(let t=0;t<10;t++){
+    if(S.seals[t] && !S.cols[t].length){
+      S.seals[t] = false;
+      render();
+      let opts = pool('good');
+      if(S.pocket.length>=3) opts = opts.filter(x=>x!=='pocket');
+      opts = shuffle(opts).slice(0,3);
+      const picked = await pickModal(opts, Math.min(2, opts.length));
+      const got = picked.map(k => grantGood(k));
+      note('risk', `${t+1}列目の封印が解けた`, `「${got.map(k=>EV[k].name).join('」「')}」を手に入れた`);
+      for(const k of got){ render(); await fxGet(k); }
+    }
+  }
+}
+function checkWin(){
+  if(S.won || S.done.length < 8) return;
+  S.won = true; save(); render();
+  const news = recordWin();
+  modal({
+    title:'8組そろいました',
+    body:`<p>手数 <b>${S.moves}</b>　時間 <b>${fmtTime(S.elapsed)}</b></p>${news.length ? `<p style="color:var(--brass);font-weight:700">自己ベスト更新：${news.join('・')}</p>` : ''}<p class="muted">マーク${S.suits}種・イベント${S.evTotal}枚・ヒント${S.hints||0}回</p>${recordsTable()}`,
+    buttons:[{label:'盤面を見る', value:false},{label:'新しいゲーム', value:true, primary:true}]
+  }).then(v => { if(v) newGame(); });
+}
+
+/* ---------- スキル ---------- */
+function useSkill(k){
+  if(ui.busy || S.won || ui.drag) return;
+  if(S.inv[k] <= 0) return;
+  if(k==='bind'){ ui.bind = !ui.bind; ui.mode = null; ui.hints = null; render(); if(ui.bind) fxUse('bind'); return; }
+  ui.bind = false;
+  ui.mode = ui.mode===k ? null : k;
+  render();
+}
+function usePeek(t){
+  const downs = S.cols[t].filter(x=>!x.up);
+  if(!downs.length || downs.every(x=>x.pk)){ toast('この列には見るカードがありません','別の列を選んでください','info'); return; }
+  undoStack = [];  // 見えた情報を「元に戻す」で消せないようにする
+  downs.forEach(x => x.pk = true);
+  S.inv.peek--; ui.mode = null;
+  addLog('good', `${t+1}列目を透視した`);
+  save(); render();
+  fxUse('peek'); fxScan(colRect(t), 'good');
+}
+async function useDig(t){
+  const c = S.cols[t];
+  let i = -1;
+  for(let k=c.length-1;k>=0;k--){ if(!c[k].up){ i = k; break; } }
+  if(i < 0){ toast('この列には裏向きのカードがありません','別の列を選んでください','info'); return; }
+  if(S.locks[t] > 0){ toast('鎖がかかっている列は掘れません', `${lockText(t)}外れません`, 'info'); return; }
+  undoStack = [];  // めくった情報を「元に戻す」で消せないようにする
+  const card = c[i];
+  card.up = true; S.inv.dig--; ui.mode = null;
+  addLog('good', `${t+1}列目を発掘した：${cardName(card)}が出てきた`);
+  ui.busy = true; render();
+  const r = cardRect(card.id);
+  if(r){ fxBox(r, 'good', 1200); fxBurst(...center(r), 'good', 16, 100); }
+  await fxUse('dig');
+  await settle([], {tick:false, flipped:[{col:t, card}]});
+}
+function findCard(id){
+  for(const c of S.cols) for(const x of c) if(x.id===id) return x;
+  for(const x of S.pocket) if(x && x.id===id) return x;
+  return null;
+}
+
+
+
+/* ---------- ヒント ---------- */
+/* 点数の考え方：裏向きカードをめくる手 > 列を空ける手 > 同じマークでつなぐ手 > 下のカードを出す手。
+   すでに同じマークでつながっている連続を崩す手と、意味のない横移動は候補から外す。 */
+function listHints(){
+  const out = [];
+  for(let f=0;f<10;f++){
+    if(S.locks[f]>0) continue;
+    const col = S.cols[f];
+    for(let i=0;i<col.length;i++){
+      if(!canGrab(f,i)) continue;
+      const b = col[i], below = col[i-1], n = col.length - i;
+      const reveals = !!below && !below.up;
+      const empties = i===0;
+      const onRun = !!below && below.up && below.r===b.r+1;
+      if(onRun && below.s===b.s) continue;               // つながりを崩すだけ
+      for(let t=0;t<10;t++){
+        if(!canDrop(b,t,f)) continue;
+        const tc = S.cols[t], top = tc[tc.length-1];
+        if(!top && (empties || !reveals)) continue;      // 空いた列へは、めくれるときだけ
+        const same = !!top && top.s===b.s;
+        if(onRun && !same) continue;                     // 別マークから別マークへの横移動
+        let sc = 0; const why = [];
+        if(reveals){ sc += 50 + (below.ev ? 5 : 0); why.push(below.ev ? 'イベント付きのカードがめくれます' : '裏向きのカードがめくれます'); }
+        if(empties){ sc += 30; why.push('列が1つ空きます'); if(S.seals[f]){ sc += 20; why.push('封印が解けます'); } }
+        if(same){ sc += 20 + n; why.push('同じマークでつながります'); }
+        if(below && below.up && !onRun){ sc += 10; why.push(`下の${cardName(below)}が使えるようになります`); }
+        if(!top) sc -= 20;
+        if(col.slice(i).some(x=>x.bomb>0)){ sc += 25; why.push('爆弾を解除できます'); }
+        if(!why.length) continue;
+        out.push({sc, src:{type:'col', col:f, idx:i}, dst:{type:'col', col:t}, text:`${f+1}列目の${cardName(b)}${n>1?`から${n}枚`:''}を${t+1}列目へ`, why});
+      }
+    }
+  }
+  S.pocket.forEach((c,slot) => {
+    if(!c) return;
+    for(let t=0;t<10;t++){
+      if(!canDrop(c,t,-1)) continue;
+      const top = S.cols[t][S.cols[t].length-1];
+      if(!top) continue;
+      const same = top.s===c.s;
+      out.push({sc:15 + (same?20:0), src:{type:'pocket', slot}, dst:{type:'col', col:t}, text:`ポケットの${cardName(c)}を${t+1}列目へ`, why:['ポケットが空きます', ...(same?['同じマークでつながります']:[])]});
+    }
+  });
+  const free = S.pocket.findIndex(x=>!x);
+  if(free >= 0){
+    for(let f=0;f<10;f++){
+      const col = S.cols[f];
+      if(S.locks[f]>0 || col.length<2 || col[col.length-2].up) continue;
+      out.push({sc:30, src:{type:'col', col:f, idx:col.length-1}, dst:{type:'pocket', slot:free}, text:`${f+1}列目の${cardName(col[col.length-1])}をポケットへ`, why:['裏向きのカードがめくれます']});
+    }
+  }
+  return out.sort((a,b) => b.sc - a.sc);
+}
+function isHintSrc(o){
+  const h = ui.hintShow; if(!h || !h.src || o.col===-1) return false;
+  if(h.src.type==='pocket') return o.pocket===h.src.slot;
+  return o.pocket==null && o.col===h.src.col && o.idx>=h.src.idx;
+}
+function hintDst(kind, i){
+  const h = ui.hintShow; if(!h || !h.dst) return false;
+  if(kind==='stock') return h.dst.type==='stock';
+  return h.dst.type===kind && (kind==='pocket' ? h.dst.slot===i : h.dst.col===i);
+}
+function showHint(){
+  if(ui.busy || S.won || ui.drag) return;
+  if(ui.mode){ resetUi(); }
+  if(!ui.hints){
+    const deep = searchHints(), sk = skillHints();
+    if(deep.length) ui.hints = deep.concat(sk);   // 良い手のあとに、スキルの使いどころ
+    else {
+      // 先読みで良い手がなければ、スキル → ポケットを使う手 → 山札の順に提案
+      ui.hints = sk.concat(listHints().filter(h => h.src.type==='pocket' || h.dst.type==='pocket'));
+      if(ui.hints.length && dealState().ok) ui.hints.push({dst:{type:'stock'}, text:'山札を配る', why:['動かして良くなる手がないときは、配って新しいカードを出しましょう']});
+    }
+    ui.hintIdx = -1;
+  }
+  S.hints = (S.hints||0) + 1;
+  let shown;
+  if(ui.hints.length){
+    ui.hintIdx = (ui.hintIdx + 1) % ui.hints.length;
+    const h = ui.hints[ui.hintIdx];
+    shown = h;
+    toast(`ヒント ${ui.hintIdx+1}/${ui.hints.length}：${h.text}`, h.why.join('。') + (ui.hints.length>1 ? '。もう一度押すと次の候補' : ''), 'brass');
+  }else{
+    const ds = dealState();
+    const empty = S.cols.findIndex((c,t) => !c.length && !S.locks[t]);
+    let filler = -1;
+    if(!ds.ok && empty>=0 && S.stock.length){
+      const cand = [...Array(10).keys()].filter(f => S.cols[f].length>=2 && !S.locks[f]);
+      // 一番上のカードが同じマークの連続に乗っていない列を優先（崩すものが少ない）
+      filler = cand.find(f => { const c=S.cols[f], a=c[c.length-1], b=c[c.length-2]; return !(b.up && b.r===a.r+1 && b.s===a.s); });
+      if(filler==null) filler = cand.length ? cand[0] : -1;
+    }
+    if(filler>=0){
+      const c = S.cols[filler], top = c[c.length-1];
+      shown = {src:{type:'col', col:filler, idx:c.length-1}, dst:{type:'col', col:empty}};
+      toast(`ヒント：${filler+1}列目の${cardName(top)}を${empty+1}列目へ`, '空いた列を埋めると山札を配れるようになります', 'brass');
+    }
+    else if(ds.ok){ shown = {dst:{type:'stock'}}; toast('動かせる手がありません', '山札を配りましょう', 'brass'); }
+    else{
+      const skills = ITEMS.some(k => S.inv[k]>0);
+      toast('動かせる手がありません', S.stock.length ? '空いた列を埋めないと配れません。スキルを使うか、「元に戻す」で戻ってみてください'
+        : skills ? 'スキルを使うか、「元に戻す」で戻ってみてください' : '「元に戻す」で戻るか、新しいゲームを始めてください', 'info');
+    }
+  }
+  ui.hintShow = shown || null;
+  store(KEY_GAME, {S, initialSnap});
+  render();
+  const mark = ui.hintShow;
+  setTimeout(() => { if(ui.hintShow===mark && mark){ ui.hintShow = null; if(!ui.drag) render(); } }, 3200);
+}
+
+/* ---------- 説明ポップ ---------- */
+const HOWTO = {
+  peek:'「使う」を押してから、中を見たい列を選びます。見たあとは「元に戻す」で戻れません',
+  bind:'オンにすると、次の1回だけ、表向きのカードを並びに関係なくまとめてつかめます。普通に動かせる連続を動かしたときは減りません',
+  dig:'「使う」を押してから、掘りたい列を選びます。出てきたカードにイベントがあれば、その場で起きます。使ったあとは「元に戻す」で戻れません',
+};
+function openPop(anchor, html, key){
+  const p = els.pop;
+  p.innerHTML = html; p.dataset.key = key; p.hidden = false;
+  const r = anchor.getBoundingClientRect(), pw = p.offsetWidth, ph = p.offsetHeight;
+  const left = Math.max(12, Math.min(r.left + r.width/2 - pw/2, window.innerWidth - pw - 12));
+  let top = r.bottom + 8;
+  if(top + ph > window.innerHeight - 12) top = Math.max(12, r.top - ph - 8);
+  p.style.left = left + 'px'; p.style.top = top + 'px';
+}
+function openMenu(anchor){
+  if(!els.pop.hidden && els.pop.dataset.key==='menu'){ closePop(); return; }
+  openPop(anchor, `<div class="menu">
+    <button class="menu-item" data-act="restart">同じ配りで最初から</button>
+    <button class="menu-item" data-act="records">記録</button>
+    <button class="menu-item" data-act="settings">設定</button>
+    <button class="menu-item" data-act="help">遊び方</button></div>`, 'menu');
+  const r = anchor.getBoundingClientRect();
+  els.pop.style.left = Math.max(12, Math.min(r.right - els.pop.offsetWidth, window.innerWidth - els.pop.offsetWidth - 12)) + 'px';
+}
+function closePop(){ if(els.pop && !els.pop.hidden){ els.pop.hidden = true; els.pop.dataset.key = ''; } }
+function openSkillPop(anchor, k){
+  if(!els.pop.hidden && els.pop.dataset.key==='skill:'+k){ closePop(); return; }
+  if(ui.newSkills.delete(k)){ render(); anchor = document.querySelector(`[data-act="skillinfo"][data-skill="${k}"]`) || anchor; }
+  const d = EV[k], n = S.inv[k];
+  let btn = '';
+  if(n>0 && k==='bind') btn = `<button class="btn primary" data-act="pop-use" data-skill="bind">${ui.bind ? 'オフにする' : 'オンにする'}</button>`;
+  else if(n>0) btn = `<button class="btn primary" data-act="pop-use" data-skill="${k}">${ui.mode===k ? 'やめる' : '使う'}</button>`;
+  openPop(anchor,
+    `<div class="pop-h"><span class="kb good">${d.k}</span><b>${d.name}</b><span class="pop-n">${n>0 ? `${n}個持っています` : 'まだ持っていません'}</span></div>`+
+    `<p>${d.desc}</p><p class="muted">${n>0 ? HOWTO[k] : '「吉」の印のカードや宝箱で手に入ります'}</p><p class="muted">悪いイベントのとき、スキルを1つ手放して防ぐこともできます。</p>`+
+    (btn ? `<div class="pop-btns">${btn}</div>` : ''), 'skill:'+k);
+}
+function tipText(el){
+  const t = el.dataset.tip;
+  if(t==='chain'){ const c = +el.dataset.col; return `<b>鎖（${lockText(c)}）</b>この列のカードは動かせず、ほかの列からここへ置くこともできません。${S.locks[c] >= CHAIN_DEAL ? '山札を配ると外れます' : '1手ごとに1つ減ります'}`; }
+  if(t==='seal') return `<b>封印（${S.stock.length ? '次に配るまで' : '期限なし'}）</b>この列を空にすると、良いイベントを3つの中から2つ選べます。${S.stock.length ? '空にする前に山札を配ると封印が崩れ、落盤が起きます' : ''}`;
+  if(t==='bomb'){ const c = findCard(+el.dataset.id); return `<b>爆弾（あと${c ? c.bomb : '?'}手）</b>このカードを動かせば宝箱がもらえます。0になると落盤が起きます`; }
+  if(t==='unknown') return settings.reveal==='next'
+    ? `<b>イベントあり</b>種類はまだわかりません。表向きカードのすぐ下（次にめくれる位置）まで掘ると、吉・凶・賭のどれかが見えます。「透視」なら今すぐ中身まで見えます`
+    : `<b>イベントあり</b>めくるまで種類はわかりません。「透視」を使うと中身が見えます`;
+  if(t && t.startsWith('cat:')){ const c = CAT[t.slice(4)]; return `<b>「${c.mark}」${c.label}</b>${c.hint}。中身はめくるまでわかりません（「透視」で見えます）`; }
+  if(t && t.startsWith('ev:')){ const d = EV[t.slice(3)]; return `<b>${d.name}（${{good:'良い',bad:'悪い',risk:'リスクのある'}[d.cat]}イベント）</b>${d.desc}`; }
+  return '';
+}
+function openTipPop(a){
+  const key = 'tip:' + a.dataset.tip + (a.dataset.col||'');
+  if(!els.pop.hidden && els.pop.dataset.key===key){ closePop(); return; }
+  openPop(a, `<div class="tipbody">${tipText(a)}</div>`, key);
+}
+function showTip(el){
+  const html = tipText(el); if(!html) return;
+  const t = els.tip; t.innerHTML = html; t.hidden = false;
+  const r = el.getBoundingClientRect(), tw = t.offsetWidth, th = t.offsetHeight;
+  let top = r.top - th - 8; if(top < 8) top = r.bottom + 8;
+  t.style.left = Math.max(8, Math.min(r.left + r.width/2 - tw/2, window.innerWidth - tw - 8)) + 'px';
+  t.style.top = top + 'px';
+}
+function hideTip(){ els.tip.hidden = true; }
+
+/* ---------- ヒント（先読み） ----------
+   盤面を数値の配列にして、最大7手先まで「よい盤面」になる手順を探す（ビームサーチ）。
+   裏向きのカードの中身は使わない（ずるをしない）。めくれたカードは「未知のカード」として扱う。
+   盤面の点数：完成した組 > 裏向きが減る > 列が空く > 同じマークのつながり > 別マークでも数字のつながり。
+   何手か動かしても点数が上がらないなら、山札を配るのをすすめる。 */
+const HID = -1, NEW = -2;              // 裏向き（中身も印も不明）/ めくれたけど中身未知
+const HG = -11, HB = -12, HR = -13;     // 裏向きで、印（吉・凶・賭）が見えているもの
+const isHid = v => v===HID || v<=-10;
+let HBW = -35;                          // 凶を1枚めくる価値（スキルがないときは下げる）
+/* プレイヤーに見えている情報だけで符号化する（見えていない印は使わない） */
+function hidCode(c, isNext){
+  if(!c.ev) return HID;
+  const vis = c.pk || settings.reveal==='all' || (settings.reveal==='next' && isNext);
+  if(!vis) return HID;
+  const cat = EV[c.ev].cat;
+  return cat==='good' ? HG : cat==='bad' ? HB : HR;
+}
+function encCols(){
+  return S.cols.map(c => {
+    let nx = -1; for(let i=c.length-1;i>=0;i--){ if(!c[i].up){ nx = i; break; } }
+    return c.map((x,i) => x.up ? x.r*4 + x.s : hidCode(x, i===nx));
+  });
+}
+function evalCols(cols, done){
+  let sc = done*1000;
+  for(const c of cols){
+    if(!c.length){ sc += 40; continue; }
+    for(let i=0;i<c.length;i++){
+      const v = c[i];
+      if(isHid(v)){ sc += v===HG ? -80 : v===HB ? HBW : -60; continue; }
+      if(v < 4 || i===0) continue;
+      const b = c[i-1];
+      if(b < 4) continue;
+      if((b>>2)===(v>>2)+1) sc += (b&3)===(v&3) ? 8 : 2; else sc -= 3;
+    }
+  }
+  return sc;
+}
+function genMoves(cols, locked){
+  const out = [];
+  for(let f=0;f<10;f++){
+    if(locked[f]) continue;
+    const c = cols[f]; if(!c.length || c[c.length-1] < 4) continue;
+    let i = c.length-1;
+    while(true){
+      const v = c[i];
+      let usedEmpty = false;
+      for(let t=0;t<10;t++){
+        if(t===f || locked[t]) continue;
+        const tc = cols[t];
+        if(!tc.length){ if(i===0 || usedEmpty) continue; usedEmpty = true; out.push([f,i,t]); }
+        else { const top = tc[tc.length-1]; if(top >= 4 && (top>>2)===(v>>2)+1) out.push([f,i,t]); }
+      }
+      if(i===0) break;
+      const b = c[i-1];
+      if(b < 4 || (b>>2)!==(v>>2)+1 || (b&3)!==(v&3)) break;
+      i--;
+    }
+  }
+  return out;
+}
+function applyEnc(cols, [f,i,t]){
+  const n = cols.slice();
+  n[f] = cols[f].slice(0,i);
+  n[t] = cols[t].concat(cols[f].slice(i));
+  let done = 0;
+  const tc = n[t];
+  if(tc.length >= 13){
+    const s = tc[tc.length-13] & 3; let ok = true;
+    for(let k=0;k<13;k++){ const v = tc[tc.length-13+k]; if(v<4 || (v>>2)!==13-k || (v&3)!==s){ ok = false; break; } }
+    if(ok){ n[t] = tc.slice(0, -13); done = 1; }
+  }
+  for(const x of [f,t]){ const c = n[x]; if(c.length && isHid(c[c.length-1])){ n[x] = c.slice(0,-1).concat(NEW); } }
+  return {cols:n, done};
+}
+function searchHints(){
+  const hasSkill = ITEMS.some(k => S.inv[k] > 0);
+  HBW = hasSkill ? -35 : -15;   // 防ぐスキルがなければ、凶をめくる手は後回し
+  const locked = S.locks.map(x => x>0);
+  const start = encCols();
+  const base = evalCols(start, 0);
+  const key = cols => cols.map(c => c.join(',')).join('|');
+  const seen = new Set([key(start)]);
+  const best = new Map();
+  let beam = [{cols:start, done:0, first:null}];
+  for(let d=0; d<7 && beam.length; d++){
+    const next = [];
+    for(const st of beam){
+      for(const m of genMoves(st.cols, locked)){
+        const r = applyEnc(st.cols, m), k = key(r.cols);
+        if(seen.has(k)) continue; seen.add(k);
+        const done = st.done + r.done;
+        const node = {cols:r.cols, done, first:st.first || m, depth:d+1, sc:evalCols(r.cols, done) - (d+1)};
+        next.push(node);
+        const fk = node.first.join('-'), prev = best.get(fk);
+        if(!prev || node.sc > prev.sc) best.set(fk, node);
+      }
+    }
+    next.sort((a,b) => b.sc - a.sc);
+    beam = next.slice(0, 160);
+  }
+  const count = (cols, fn) => cols.reduce((a,c) => a + c.filter(fn).length, 0);
+  const links = cols => cols.reduce((a,c) => { for(let i=1;i<c.length;i++){ const v=c[i], b=c[i-1]; if(v>=4 && b>=4 && (b>>2)===(v>>2)+1 && (b&3)===(v&3)) a++; } return a; }, 0);
+  const hid0 = count(start, isHid), bad0 = count(start, v=>v===HB), good0 = count(start, v=>v===HG), emp0 = start.filter(c=>!c.length).length, ln0 = links(start);
+  const hist = ui.hist || new Set();
+  return [...best.values()].filter(n => n.sc > base && !hist.has(key(applyEnc(start, n.first).cols))).sort((a,b) => b.sc - a.sc).map(n => {
+    const [f,i,t] = n.first, card = S.cols[f][i], cnt = S.cols[f].length - i;
+    const why = [];
+    if(n.done) why.push(`組が${n.done}つ完成します`);
+    const rev = hid0 - count(n.cols, isHid); if(rev>0) why.push(`裏向きのカードが${rev}枚めくれます`);
+    const rg = good0 - count(n.cols, v=>v===HG); if(rg>0) why.push('吉のカードをめくれます');
+    const rb = bad0 - count(n.cols, v=>v===HB); if(rb>0) why.push(hasSkill ? '凶のカードもめくれます（スキルで防げます）' : '凶のカードもめくれます（防ぐスキルがないので注意）');
+    const emp = n.cols.filter(c=>!c.length).length - emp0; if(emp>0) why.push(`列が${emp}つ空きます`);
+    if(!why.length) why.push(links(n.cols) > ln0 ? '同じマークのつながりが増えます' : 'カードの並びが整います');
+    const lead = n.depth===1 ? 'この1手で' : `この手から${n.depth}手で`;
+    return {src:{type:'col', col:f, idx:i}, dst:{type:'col', col:t}, text:`${f+1}列目の${cardName(card)}${cnt>1?`から${cnt}枚`:''}を${t+1}列目へ`, why:[lead + why.join('、')], depth:n.depth};
+  });
+}
+
+/* 詰まったときや、手の候補のあとに出す「スキルの使いどころ」 */
+function skillHints(){
+  const out = [], locked = S.locks.map(x => x>0);
+  if(S.inv.bind > 0){
+    for(let f=0; f<10 && out.length<2; f++){
+      if(locked[f]) continue;
+      const c = S.cols[f], lo = c.findIndex(x => x.up);
+      if(lo <= 0 || runOK(f, lo)) continue;       // 下に裏向きがあり、普通には動かせない山だけ
+      const b = c[lo];
+      for(let t=0;t<10;t++){
+        if(t===f || locked[t] || !S.cols[t].length) continue;
+        const top = S.cols[t][S.cols[t].length-1];
+        if(top.up && top.r===b.r+1){
+          out.push({chip:'bind', src:{type:'col', col:f, idx:lo}, dst:{type:'col', col:t},
+            text:`「束ね」で${f+1}列目の${cardName(b)}から${c.length-lo}枚を${t+1}列目へ`, why:['並んでいない山ごと動かして、下の裏向きカードをめくれます']});
+          break;
+        }
+      }
+    }
+  }
+  if(S.inv.dig > 0){
+    let best = null;
+    for(let t=0;t<10;t++){
+      if(locked[t]) continue;
+      const c = S.cols[t]; let nx = -1;
+      for(let i=c.length-1;i>=0;i--){ if(!c[i].up){ nx = i; break; } }
+      if(nx < 0) continue;
+      const code = hidCode(c[nx], true);
+      if(code===HB) continue;                     // 凶と分かっている列は掘らない
+      const v = (code===HG ? 300 : code===HID ? 200 : 100) + c.filter(x=>!x.up).length;
+      if(!best || v > best.v) best = {t, v, code};
+    }
+    if(best) out.push({chip:'dig', dst:{type:'col', col:best.t}, text:`「発掘」で${best.t+1}列目を掘る`,
+      why:[best.code===HG ? '次のカードは吉です' : best.code===HR ? '次のカードは賭です' : '裏向きのカードがいちばん多い列です']});
+  }
+  if(S.inv.peek > 0 && settings.reveal!=='all'){
+    let best = null;
+    S.cols.forEach((c,t) => { const n = c.filter(x => !x.up && x.ev && !x.pk).length; if(n && (!best || n > best.n)) best = {t, n}; });
+    if(best) out.push({chip:'peek', dst:{type:'col', col:best.t}, text:`「透視」で${best.t+1}列目を見る`, why:[`中身のわからないイベントが${best.n}つあります`]});
+  }
+  return out;
+}
+
+/* ---------- 演出 ---------- */
+const RM = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+const fxL = () => document.getElementById('fx');
+const cvar = cat => `var(--${cat})`;
+const center = r => [r.left + r.width/2, r.top + r.height/2];
+function fxLater(fn){ ui.fxq.push(fn); }
+async function flushFx(){ while(ui.fxq.length){ const fn = ui.fxq.shift(); render(); try{ await fn(); }catch(e){} } }
+function colRect(t){
+  const col = document.querySelector(`.col[data-col="${t}"]`); if(!col) return null;
+  const p = col.querySelector('.pile').getBoundingClientRect();
+  const cards = col.querySelectorAll('.card'), last = cards[cards.length-1];
+  return {left:p.left, top:p.top, width:L.cw, height:(last ? last.getBoundingClientRect().bottom : p.top + L.ch) - p.top};
+}
+function cardRect(id){ const el = document.querySelector(`.card[data-id="${id}"]`); return el ? el.getBoundingClientRect() : null; }
+function fxBurst(x, y, cat, n=14, spread=110){
+  if(RM) return;
+  for(let i=0;i<n;i++){
+    const p = document.createElement('span'); p.className = 'fx-p';
+    p.style.cssText = `--c:${cvar(cat)};left:${x}px;top:${y}px`;
+    fxL().appendChild(p);
+    const a = Math.PI*2*i/n + Math.random()*.5, d = spread*(.5 + Math.random()*.6), s = .6 + Math.random()*.9;
+    p.animate([{transform:`translate(-50%,-50%) scale(${s})`, opacity:1},
+               {transform:`translate(calc(-50% + ${Math.cos(a)*d}px), calc(-50% + ${Math.sin(a)*d}px)) scale(0)`, opacity:0}],
+              {duration:650 + Math.random()*300, easing:'cubic-bezier(.2,.7,.3,1)'}).finished.then(() => p.remove(), () => p.remove());
+  }
+}
+function fxBox(r, cat, dur=1100){
+  if(RM || !r) return;
+  const b = document.createElement('div'); b.className = 'fx-box';
+  b.style.cssText = `--c:${cvar(cat)};left:${r.left-4}px;top:${r.top-4}px;width:${r.width+8}px;height:${r.height+8}px`;
+  fxL().appendChild(b);
+  b.animate([{opacity:0},{opacity:1, offset:.2},{opacity:1, offset:.65},{opacity:0}], {duration:dur}).finished.then(() => b.remove(), () => b.remove());
+}
+function fxScan(r, cat){
+  if(RM || !r) return;
+  const b = document.createElement('div'); b.className = 'fx-scan';
+  b.style.cssText = `--c:${cvar(cat)};left:${r.left-4}px;top:${r.top-4}px;width:${r.width+8}px;height:${r.height+8}px`;
+  fxL().appendChild(b);
+  setTimeout(() => b.remove(), 1900);
+}
+function fxVignette(cat){
+  if(RM) return;
+  const v = document.createElement('div'); v.className = 'fx-vig'; v.style.setProperty('--c', cvar(cat));
+  fxL().appendChild(v);
+  v.animate([{opacity:0},{opacity:1, offset:.25},{opacity:0}], {duration:700}).finished.then(() => v.remove(), () => v.remove());
+}
+const fxWaiters = new Set();
+function fxWait(ms){
+  return new Promise(res => {
+    if(ui.fxSkip || RM) return res();
+    const done = () => { clearTimeout(tm); fxWaiters.delete(done); res(); };
+    const tm = setTimeout(done, ms);
+    fxWaiters.add(done);
+  });
+}
+/* 演出を飛ばす：待ちを全部解き、動いているアニメーションを最後まで進める */
+function skipFx(){
+  ui.fxSkip = true;
+  [...fxWaiters].forEach(f => f());
+  const L2 = fxL(); if(!L2) return;
+  L2.getAnimations({subtree:true}).forEach(a => { try{ if(isFinite(a.effect.getComputedTiming().endTime)) a.finish(); }catch(e){} });
+  [...L2.querySelectorAll('.fx-banner,.fx-scan,.fx-vig')].forEach(x => x.remove());
+}
+async function fxBlast(k='爆', title='爆発', sub='爆弾の時間切れ'){
+  if(RM || ui.fxSkip) return;
+  fxVignette('bad');
+  const el = await fxBanner(k, title, sub, 'bad', 300);
+  await fxOut(el);
+}
+async function fxGuard(k){
+  if(RM || ui.fxSkip) return;
+  const el = await fxBanner(EV[k].k, `${EV[k].name}で防いだ`, 'ガード', 'good', 320);
+  await fxOut(el);
+}
+function fxBanner(k, title, sub, cat, hold, desc){
+  if(RM || ui.fxSkip) return Promise.resolve(null);
+  const el = document.createElement('div'); el.className = 'fx-banner'; el.style.setProperty('--c', cvar(cat));
+  el.innerHTML = `<div class="fx-rays"></div><div class="fx-orb">${k}</div><div class="fx-title">${esc(title)}</div><div class="fx-sub">${esc(sub)}</div>${desc ? `<div class="fx-desc">${esc(desc)}</div>` : ''}<div class="fx-skip">クリックで飛ばす</div>`;
+  if(desc) hold += 700;
+  fxL().appendChild(el);
+  el.querySelector('.fx-orb').animate([{transform:'scale(.2) rotate(-30deg)', opacity:0},{transform:'scale(1.18) rotate(6deg)', opacity:1, offset:.6},{transform:'none', opacity:1}], {duration:440, easing:'cubic-bezier(.2,.9,.3,1.2)'});
+  el.querySelector('.fx-rays').animate([{opacity:0, transform:'scale(.4)'},{opacity:1, transform:'scale(1)'}], {duration:500, easing:'ease-out', fill:'backwards'});
+  el.querySelectorAll('.fx-title,.fx-sub,.fx-desc').forEach((t,i) => t.animate([{opacity:0, transform:'translateY(10px)'},{opacity:1, transform:'none'}], {duration:300, delay:200 + i*90, fill:'backwards'}));
+  setTimeout(() => { const r = el.querySelector('.fx-orb').getBoundingClientRect(); fxBurst(...center(r), cat, 18, 150); }, 260);
+  return fxWait(440 + hold).then(() => el);
+}
+async function fxOut(el){
+  if(!el) return;
+  if(ui.fxSkip){ el.remove(); return; }
+  await el.animate([{opacity:1},{opacity:0, transform:'translate(-50%,-50%) scale(1.25)'}], {duration:260, fill:'forwards'}).finished.catch(() => {});
+  el.remove();
+}
+async function fxGet(k){
+  if(RM || ui.fxSkip) return;
+  const d = EV[k];
+  const el = await fxBanner(d.k, d.name, k==='pocket' ? 'ポケットが増えた' : 'スキル獲得', 'good', 560, k==='pocket' ? d.desc : `${d.desc}。スキル欄から使えます`);
+  if(!el) return;
+  if(ui.fxSkip){ el.remove(); render(); return; }
+  render();
+  const orb = el.querySelector('.fx-orb'), from = orb.getBoundingClientRect();
+  const target = k==='pocket' ? document.querySelector('#pocket') : document.querySelector(`[data-act="skillinfo"][data-skill="${k}"] .kb`);
+  el.querySelectorAll('.fx-rays,.fx-title,.fx-sub,.fx-desc,.fx-skip').forEach(x => x.animate([{opacity:1},{opacity:0}], {duration:200, fill:'forwards'}));
+  if(target){
+    const to = target.getBoundingClientRect();
+    const dx = to.left + to.width/2 - (from.left + from.width/2), dy = to.top + to.height/2 - (from.top + from.height/2);
+    const s = Math.max(.12, Math.min(1, to.width/from.width));
+    await orb.animate([{transform:'none'},{transform:`translate(${dx*.15}px, ${dy*.15 - 40}px) scale(.8)`, offset:.3},{transform:`translate(${dx}px, ${dy}px) scale(${s})`}], {duration:620, easing:'cubic-bezier(.5,0,.25,1)', fill:'forwards'}).finished.catch(() => {});
+    fxBurst(...center(to), 'good', 12, 60);
+    const chip = target.closest('.chip') || target;
+    chip.animate([{boxShadow:'0 0 0 0 var(--good)'},{boxShadow:'0 0 0 12px transparent'}], {duration:700});
+  }
+  el.remove();
+}
+async function fxEvent(ev, rects){
+  if(RM || ui.fxSkip) return;
+  const d = EV[ev];
+  if(d.cat==='bad') fxVignette('bad');
+  const el = await fxBanner(d.k, d.name, d.cat==='bad' ? '悪いイベント' : 'リスクのあるイベント', d.cat, 420, d.desc);
+  if(!el) return;
+  if(d.cat==='bad') el.querySelector('.fx-orb').animate([{translate:'0 0'},{translate:'-7px 0'},{translate:'7px 0'},{translate:'0 0'}], {duration:200, iterations:2});
+  (rects || []).forEach(r => fxBox(r, d.cat, 1300));
+  await fxOut(el);
+}
+function fxUse(k){
+  if(RM || ui.fxSkip) return Promise.resolve();
+  return fxBanner(EV[k].k, EV[k].name, '発動', 'good', 160).then(fxOut);
+}
+async function fxSet(s, col, n){
+  if(RM || ui.fxSkip) return;
+  const r = colRect(col); if(r) fxBurst(...center(r), 'brass', 24, 170);
+  const el = await fxBanner('完', `${SUIT_NAMES[s]}の組`, `完成 ${n}/8`, 'brass', 380);
+  await fxOut(el);
+}
+
+/* ---------- 描画 ---------- */
+function layout(){
+  const W = els.tab.clientWidth || 800;
+  const gap = W < 560 ? 4 : W < 820 ? 7 : 10;
+  const cw = Math.max(28, Math.min(92, Math.floor((W - 9*gap)/10)));
+  const ch = Math.round(cw*1.42);
+  L = {cw, ch, gap, fdo:Math.max(10, Math.round(cw*.17)), fuo:Math.max(17, Math.round(cw*.34))};
+  const st = document.documentElement.style;
+  st.setProperty('--cw', cw+'px'); st.setProperty('--ch', ch+'px'); st.setProperty('--gap', gap+'px');
+}
+function offsets(col, availH){
+  const n = col.length; if(!n) return [];
+  let sum = 0;
+  for(let i=0;i<n-1;i++) sum += col[i].up ? L.fuo : L.fdo;
+  const k = (L.ch + sum > availH && sum > 0) ? Math.max(.3, (availH - L.ch)/sum) : 1;
+  const tops = []; let y = 0;
+  for(let i=0;i<n;i++){ tops.push(Math.round(y)); y += (col[i].up ? L.fuo : L.fdo)*k; }
+  return tops;
+}
+const suitSvg = (s, cls='') => `<svg class="${cls}" aria-hidden="true"><use href="#s${s}"/></svg>`;
+function cardHTML(c, o){
+  const data = o.pocket!=null ? `data-pocket="${o.pocket}"` : `data-col="${o.col}" data-idx="${o.idx}"`;
+  const p = ui.pulse[c.id], pulsing = p && p.until > Date.now();
+  const style = `top:${o.top||0}px${pulsing ? `;--pc:var(--${p.cat})` : ''}`;
+  const pcls = (pulsing ? ' pulse' : '') + (isHintSrc(o) ? ' hint-src' : '');
+  if(!c.up){
+    let inner = '';
+    if(c.pk) inner += `<span class="pkv${RED[c.s]?' red':''}">${RANK[c.r]}${suitSvg(c.s)}</span>`;
+    if(c.ev){
+      const cat = EV[c.ev].cat;
+      const showCat = settings.reveal==='all' || (settings.reveal==='next' && o.next);
+      if(c.pk) inner += `<span class="evm ${cat}" data-tip="ev:${c.ev}">${EV[c.ev].k}</span>`;
+      else if(showCat){
+        // 「?」から種類が見えた瞬間だけ、印をはずませる
+        if(settings.reveal==='next' && !ui.catAt[c.id]) ui.catAt[c.id] = Date.now();
+        const pop = ui.catAt[c.id] && Date.now() - ui.catAt[c.id] < 900 ? ' flash' : '';
+        inner += `<span class="evm ${cat} hid${pop}" data-tip="cat:${cat}">${CAT[cat].mark}</span>`;
+      }
+      else inner += `<span class="evm unk" data-tip="unknown">?</span>`;
+    }
+    return `<div class="card down${pcls}" style="${style}" data-id="${c.id}" ${data}>${inner}</div>`;
+  }
+  const sel = '';
+  return `<div class="card up${RED[c.s]?' red':''}${sel}${pcls}" style="${style}" data-id="${c.id}" ${data} aria-label="${cardName(c)}">`+
+    `<span class="rk">${RANK[c.r]}${suitSvg(c.s)}</span>${suitSvg(c.s,'big')}`+
+    (c.bomb>0 ? `<span class="bombb" data-tip="bomb" data-id="${c.id}">爆${c.bomb}</span>` : '') + `</div>`;
+}
+function render(){
+  layout();
+  els.modeTag.textContent = `マーク${S.suits}種・記録`;
+  els.moves.textContent = S.moves;
+  els.done.textContent = S.done.length;
+  els.clock.textContent = fmtTime(S.elapsed);
+  els.undo.disabled = !undoStack.length || ui.busy || S.won;
+
+  // 山札
+  const ds = dealState();
+  els.stock.innerHTML =
+    `<button class="stockpile${ds.ok?'':' blocked'}${hintDst('stock')?' hint-dst':''}" data-act="deal" ${S.stock.length?'':'disabled'} aria-label="山札を配る（残り${Math.ceil(S.stock.length/10)}回）" title="${ds.ok ? 'クリックで配る' : esc(ds.why)}">`+
+    (S.stock.length ? '<span class="back"></span>' : '') +
+    `<span class="cnt">${Math.ceil(S.stock.length/10)}<small>回</small></span></button>` +
+    '';
+
+  // ポケット
+  els.pocket.innerHTML = S.pocket.length
+    ? S.pocket.map((c,i) => `<div class="pslot${hintDst('pocket',i)?' hint-dst':''}" data-pslot="${i}">${c ? cardHTML(c,{pocket:i, top:0}) : ''}</div>`).join('')
+    : `<span class="empty-note">吉のイベントで増えます</span>`;
+
+  // スキル
+  els.skills.innerHTML = ITEMS.map(k => {
+    const n = S.inv[k];
+    const pressed = (k==='bind' && ui.bind) || ui.mode===k;
+    return `<button class="chip${n>0?'':' none'}${ui.newSkills.has(k)?' new':''}${ui.hintShow && ui.hintShow.chip===k ? ' hint-dst' : ''}" data-act="skillinfo" data-skill="${k}" aria-pressed="${pressed}" aria-label="${EV[k].name}の説明を見る">`+
+      `<span class="kb good">${EV[k].k}</span>${EV[k].name}<span class="n">×${n}</span></button>`;
+  }).join('');
+
+  // 完成した組
+  els.sets.innerHTML = Array.from({length:8}, (_,i) => {
+    const s = S.done[i];
+    return s==null ? `<span class="setslot"></span>` : `<span class="setslot full${RED[s]?' red':''}">${suitSvg(s)}</span>`;
+  }).join('');
+
+  // ヒント
+  let hint = '';
+  if(ui.mode==='peek') hint = '透視：中を見たい列を選んでください';
+  else if(ui.mode==='dig') hint = '発掘：掘りたい列を選んでください（表向きカードのすぐ下の1枚がめくれます）';
+  else if(ui.bind) hint = '束ね：表向きのカードなら、並びに関係なく1回だけまとめてつかめます';
+  els.hint.hidden = !hint;
+  els.hint.innerHTML = hint ? `<span>${hint}</span><button class="btn" data-act="cancel">やめる</button>` : '';
+  els.game.classList.toggle('peekmode', ui.mode==='peek' || ui.mode==='dig');
+
+  // 場札
+  const tabTop = els.tab.getBoundingClientRect().top + window.scrollY;
+  const availH = Math.max(L.ch*4, window.innerHeight - tabTop - 40);
+  let maxH = L.ch;
+  els.tab.innerHTML = S.cols.map((col,t) => {
+    const tops = offsets(col, availH);
+    if(col.length) maxH = Math.max(maxH, tops[col.length-1] + L.ch);
+    const head = (S.locks[t]>0 ? `<button class="tag bad" data-act="tip" data-tip="chain" data-col="${t}">鎖 ${S.locks[t] >= CHAIN_DEAL ? '配るまで' : S.locks[t]}</button>` : '') + (S.seals[t] ? `<button class="tag risk" data-act="tip" data-tip="seal" data-col="${t}">封印</button>` : '');
+    return `<div class="col${S.locks[t]>0?' locked':''}${S.seals[t]?' sealed':''}${hintDst('col',t)?' hint-dst':''}" data-col="${t}"><div class="col-head">${head}</div>`+
+      `<div class="pile"><div class="slot"></div>${(() => { let nx = -1; for(let i=col.length-1;i>=0;i--){ if(!col[i].up){ nx = i; break; } } return col.map((c,i)=>cardHTML(c,{col:t, idx:i, top:tops[i], next:i===nx})).join(''); })()}</div></div>`;
+  }).join('');
+  els.tab.style.setProperty('--pileh', maxH + 'px');
+
+  // 記録
+  els.log.classList.toggle('open', !!ui.logOpen);
+  const lt = document.getElementById('logtoggle'); if(lt){ lt.textContent = ui.logOpen ? '直近だけ表示' : `すべて表示（${S.log.length}件）`; lt.hidden = S.log.length <= 3; }
+  els.log.innerHTML = S.log.slice(0, ui.logOpen ? 40 : 3).map(l => `<li><span class="dot ${l.c}"></span><span>${esc(l.t)}</span></li>`).join('');
+}
+function fmtTime(s){ const m = Math.floor(s/60), r = s%60; return `${m}:${String(r).padStart(2,'0')}`; }
+
+/* ---------- 通知 ---------- */
+function addLog(c, t){ S.log.unshift({c, t}); if(S.log.length>40) S.log.length = 40; }
+/* 記録には必ず残す。通知は、演出（中央の大きな表示）が出ない場面か、結果を伝える必要があるときだけ */
+function note(cat, title, desc, k, force){
+  addLog(cat, desc ? `${title}：${desc}` : title);
+  if(force || RM || ui.fxSkip || !ui.busy) toast(title, desc, cat, k);
+}
+let toastTimer = null;
+function toast(title, desc, cat, k){
+  const t = els.toast;
+  t.style.setProperty('--tc', cat==='info' ? 'var(--muted)' : `var(--${cat||'brass'})`);
+  const body = `<b>${esc(title)}</b>${desc ? `<span>${esc(desc)}</span>` : ''}`;
+  t.innerHTML = k ? `<div class="tk"><span class="kb ${cat}">${k}</span><div>${body}</div></div>` : body;
+  t.hidden = false;
+  t.style.animation = 'none'; void t.offsetWidth; t.style.animation = '';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.hidden = true; }, k ? 4200 : 3200);
+}
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+function shake(el){ el.classList.remove('shake'); void el.offsetWidth; el.classList.add('shake'); }
+
+/* ---------- モーダル ---------- */
+function showModal(){ closePop(); els.modal.hidden = false; els.game.inert = true; }
+function hideModal(){ els.modal.hidden = true; els.game.inert = false; }
+function modal({title, body, buttons}){
+  return new Promise(res => {
+    const d = els.dialog;
+    d.innerHTML = `<h2>${title}</h2><div class="mbody">${body||''}</div><div class="mbtns">${buttons.map((b,i)=>`<button class="btn${b.primary?' primary':''}" data-mi="${i}">${b.label}</button>`).join('')}</div>`;
+    showModal();
+    const h = e => {
+      const b = e.target.closest('[data-mi]'); if(!b) return;
+      d.removeEventListener('click', h);
+      const v = buttons[+b.dataset.mi].value;
+      const extra = buttons[+b.dataset.mi].read ? buttons[+b.dataset.mi].read() : undefined;
+      hideModal();
+      res(extra !== undefined ? extra : v);
+    };
+    d.addEventListener('click', h);
+    (d.querySelector('.btn.primary') || d.querySelector('.btn'))?.focus();
+  });
+}
+function pickModal(opts, need){
+  return new Promise(res => {
+    const d = els.dialog, picked = [];
+    d.innerHTML = `<h2>封印が解けた</h2><div class="mbody"><p>良いイベントを${need}つ選んでください。</p></div>`+
+      `<div class="picks">${opts.map((k,i)=>`<button class="pick" data-pi="${i}"><span class="kb good">${EV[k].k}</span><b>${EV[k].name}</b><small>${EV[k].desc}</small></button>`).join('')}</div>`;
+    showModal();
+    const h = e => {
+      const b = e.target.closest('[data-pi]'); if(!b || b.disabled) return;
+      picked.push(opts[+b.dataset.pi]); b.disabled = true; b.classList.add('picked');
+      if(picked.length >= need){ d.removeEventListener('click', h); setTimeout(() => { hideModal(); res(picked); }, 220); }
+    };
+    d.addEventListener('click', h);
+    d.querySelector('.pick')?.focus();
+  });
+}
+function openHelp(){
+  const rows = cat => Object.keys(EV).filter(k=>EV[k].cat===cat).map(k=>`<div><span class="kb ${cat}">${EV[k].k}</span><b>${EV[k].name}</b><small>${EV[k].desc}</small></div>`).join('');
+  modal({
+    title:'遊び方',
+    body:`<h3>基本ルール</h3><ul>
+      <li>難しすぎるときは「設定」の「かんたん」（マーク1種）がおすすめです</li>
+      <li>1つ小さい数字の上なら、マークが違っても置けます</li>
+      <li>まとめて動かせるのは、同じマークで連続している部分だけです</li>
+      <li>同じマークでK→Aがそろうと消えます。8組でクリア</li>
+      <li>山札は好きなときに配れます。ただし空いた列があると配れません</li>
+      <li>カードはドラッグで動かせます。クリックすると置ける場所へ自動で動きます</li></ul>
+      <h3>イベント</h3>
+      <p>裏向きのカードに印があると、めくったときにイベントが起きます。印は<b style="color:var(--good)">吉</b>（良い）・<b style="color:var(--bad)">凶</b>（悪い）・<b style="color:var(--risk)">賭</b>（リスク）の3種類です。どこまで見えるかは「設定」の「印の見え方」で選べます。初期設定の「めくる直前だけ見える」では、深いところは「?」のままで、次にめくれる位置まで掘ると種類が見えます。凶をいつめくるかも作戦のうちです。悪いイベントは、スキルを1つ手放せば防げます。手に入れたスキルは、上の「スキル」を押すと説明と「使う」ボタンが出ます。カードの印や「鎖」「封印」の札は、マウスを乗せる（スマホではタップする）と説明が出ます。</p>
+      <p>ゲーム開始時に、スキルを1つランダムで持っています。鎖と封印の期限は「次に山札を配るまで」なので、いつ配るかも作戦になります。</p>
+      <p class="muted">イベントの演出は、画面をクリックすると飛ばせます。左上の「マーク○種・記録」を押すと、自己ベストが見られます。</p>
+      <h3>良いイベント（吉）</h3><div class="evlist">${rows('good')}</div>
+      <h3>悪いイベント（凶）</h3><div class="evlist">${rows('bad')}</div>
+      <h3>リスクのあるイベント（賭）</h3><div class="evlist">${rows('risk')}</div>
+      <p class="muted">「元に戻す」はいつでも使えます。イベントの結果は、戻してやり直しても変わりません。ただし透視・発掘を使ったときだけは、それより前に戻れません（見た情報をなかったことにできないようにするため）。</p>`,
+    buttons:[{label:'閉じる', value:true, primary:true}]
+  });
+}
+function openSettings(){
+  const s = settings;
+  const body = `<div class="form">
+    <fieldset><legend>おすすめの難しさ</legend>
+      <button type="button" class="btn" data-preset="easy">かんたん</button><button type="button" class="btn" data-preset="normal">ふつう</button><button type="button" class="btn" data-preset="hard">むずかしい</button>
+    </fieldset>
+    <fieldset><legend>印の見え方（いまのゲームにもすぐ反映）</legend>
+      ${Object.keys(REVEAL).map(k=>`<label style="gap:6px;justify-content:flex-start"><input type="radio" name="reveal" id="set-r-${k}" value="${k}" ${s.reveal===k?'checked':''}>${REVEAL[k]}${k==='next'?'（おすすめ）':''}</label>`).join('')}
+    </fieldset>
+    <fieldset><legend>マークの種類</legend>
+      ${[1,2,4].map(n=>`<label style="gap:6px;justify-content:flex-start"><input type="radio" name="suits" id="set-s${n}" value="${n}" ${s.suits===n?'checked':''}>${n}種類</label>`).join('')}
+    </fieldset>
+    <div><label for="set-events">イベントの数 <output id="o-events">${s.events}枚</output></label><input type="range" id="set-events" min="0" max="12" step="1" value="${s.events}"></div>
+    <div><label for="set-bad">悪いイベントの割合 <output id="o-bad">${s.bad}%</output></label><input type="range" id="set-bad" min="0" max="60" step="5" value="${s.bad}"></div>
+    <div><label for="set-risk">リスクのあるイベントの割合 <output id="o-risk">${s.risk}%</output></label><input type="range" id="set-risk" min="0" max="40" step="5" value="${s.risk}"></div>
+    <p class="muted" id="o-good">良いイベント：${100-s.bad-s.risk}%</p>
+  </div>`;
+  const read = () => {
+    const v = id => +document.getElementById(id).value;
+    return {suits:+(document.querySelector('input[name=suits]:checked')?.value || 2), events:v('set-events'), bad:v('set-bad'), risk:v('set-risk'), reveal:document.querySelector('input[name=reveal]:checked')?.value || 'next'};
+  };
+  const p = modal({title:'設定', body, buttons:[{label:'やめる', value:null},{label:'この設定で新しいゲーム', value:'apply', primary:true, read}]});
+  const upd = () => { const r = read(); $('#o-events').textContent = r.events+'枚'; $('#o-bad').textContent = r.bad+'%'; $('#o-risk').textContent = r.risk+'%'; $('#o-good').textContent = `良いイベント：${100-r.bad-r.risk}%`; };
+  els.dialog.addEventListener('input', upd);
+  const pre = e => {
+    const b = e.target.closest('[data-preset]'); if(!b) return;
+    const v = PRESETS[b.dataset.preset];
+    document.getElementById('set-s'+v.suits).checked = true;
+    document.getElementById('set-events').value = v.events; document.getElementById('set-bad').value = v.bad; document.getElementById('set-risk').value = v.risk;
+    upd();
+  };
+  els.dialog.addEventListener('click', pre);
+  p.then(async v => {
+    els.dialog.removeEventListener('input', upd); els.dialog.removeEventListener('click', pre);
+    if(!v || typeof v!=='object') return;
+    const dealChanged = ['suits','events','bad','risk'].some(k => v[k] !== settings[k]);
+    settings = v; store(KEY_SET, settings);
+    render();
+    if(!dealChanged){ toast('設定を保存しました', `印の見え方：${REVEAL[settings.reveal]}`, 'info'); return; }
+    if(await confirmLeave('この設定で配り直しますか？')) newGame();
+    else toast('設定を保存しました', '印の見え方はすぐ反映しました。ほかの設定は次に新しいゲームを始めたときから使われます', 'info');
+  });
+}
+async function confirmLeave(msg){
+  if(S.won || S.moves===0) return true;
+  return modal({title:msg, body:'<p>いまのゲームの進み具合は消えます。</p>', buttons:[{label:'やめる', value:false},{label:'はい', value:true, primary:true}]});
+}
+
+/* ---------- ドラッグ・クリック ---------- */
+function elCard(el){
+  if(el.dataset.pocket!=null) return S.pocket[+el.dataset.pocket];
+  return S.cols[+el.dataset.col]?.[+el.dataset.idx];
+}
+function onDown(e){
+  if(e.button) return;
+  if(ui.busy || !els.modal.hidden || ui.drag) return;
+  const cardEl = e.target.closest('.card'), colEl = e.target.closest('.col');
+  if(ui.mode==='peek'){ if(colEl) usePeek(+colEl.dataset.col); return; }
+  if(ui.mode==='dig'){ if(colEl) useDig(+colEl.dataset.col); return; }
+  if(!cardEl || S.won) return;
+  let src;
+  if(cardEl.dataset.pocket!=null){
+    const slot = +cardEl.dataset.pocket; if(!S.pocket[slot]) return;
+    src = {type:'pocket', slot};
+  }else{
+    const col = +cardEl.dataset.col, idx = +cardEl.dataset.idx, c = S.cols[col][idx];
+    if(!c || !c.up) return;
+    if(S.locks[col]>0){ toast('鎖がかかっています', S.locks[col] >= CHAIN_DEAL ? '山札を配ると外れます' : `あと${S.locks[col]}手で動かせます`, 'bad'); shake(cardEl); return; }
+    if(!canGrab(col, idx)){ shake(cardEl); return; }
+    src = {type:'col', col, idx};
+  }
+  const r = cardEl.getBoundingClientRect();
+  ui.drag = {src, ids:dragCards(src).map(c=>c.id).join(','), x0:e.clientX, y0:e.clientY, offX:e.clientX-r.left, offY:e.clientY-r.top, started:false, ghost:null, id:e.pointerId};
+  window.addEventListener('pointermove', onMove);
+  window.addEventListener('pointerup', onUp);
+  window.addEventListener('pointercancel', onCancel);
+  e.preventDefault();
+}
+function dragCards(src){ return src.type==='col' ? S.cols[src.col].slice(src.idx) : [S.pocket[src.slot]]; }
+function validCol(src, t){
+  return src.type==='col' ? canDrop(S.cols[src.col][src.idx], t, src.col) : canDrop(S.pocket[src.slot], t, -1);
+}
+function validPocket(src, slot){
+  return src.type==='col' && src.idx===S.cols[src.col].length-1 && !S.pocket[slot];
+}
+function beginDrag(){
+  const d = ui.drag; d.started = true;
+  const g = document.createElement('div');
+  g.className = 'ghost';
+  g.style.height = L.ch + 'px';
+  g.innerHTML = dragCards(d.src).map((c,i) => cardHTML(c, {col:-1, idx:i, top:i*L.fuo})).join('');
+  document.body.appendChild(g);
+  d.ghost = g;
+  if(d.src.type==='col') document.querySelectorAll(`.col[data-col="${d.src.col}"] .card`).forEach(el => { if(+el.dataset.idx >= d.src.idx) el.classList.add('lifting'); });
+  else document.querySelector(`.pslot[data-pslot="${d.src.slot}"] .card`)?.classList.add('lifting');
+  document.querySelectorAll('.col').forEach(el => { if(validCol(d.src, +el.dataset.col)) el.classList.add('can-drop'); });
+  document.querySelectorAll('.pslot').forEach(el => { if(validPocket(d.src, +el.dataset.pslot)) el.classList.add('can-drop'); });
+}
+function hitTest(x, y){
+  for(const el of document.querySelectorAll('.pslot')){
+    const r = el.getBoundingClientRect();
+    if(x>=r.left && x<=r.right && y>=r.top && y<=r.bottom) return {kind:'pocket', slot:+el.dataset.pslot, el};
+  }
+  for(const el of document.querySelectorAll('.col')){
+    const r = el.getBoundingClientRect();
+    if(x>=r.left-L.gap/2 && x<=r.right+L.gap/2 && y>=r.top-12) return {kind:'col', col:+el.dataset.col, el};
+  }
+  return null;
+}
+function onMove(e){
+  const d = ui.drag; if(!d || e.pointerId!==d.id) return;
+  if(!d.started){ if(Math.hypot(e.clientX-d.x0, e.clientY-d.y0) < 6) return; beginDrag(); }
+  d.ghost.style.transform = `translate(${e.clientX-d.offX}px, ${e.clientY-d.offY}px)`;
+  document.querySelectorAll('.hover').forEach(x => x.classList.remove('hover'));
+  const h = hitTest(e.clientX, e.clientY);
+  if(h && h.el.classList.contains('can-drop')) h.el.classList.add('hover');
+}
+function endDrag(){
+  window.removeEventListener('pointermove', onMove);
+  window.removeEventListener('pointerup', onUp);
+  window.removeEventListener('pointercancel', onCancel);
+  const d = ui.drag; ui.drag = null;
+  if(d && d.ghost) d.ghost.remove();
+  return d;
+}
+function onCancel(){ endDrag(); render(); }
+function onUp(e){
+  const d = ui.drag; if(!d || e.pointerId!==d.id) return;
+  endDrag();
+  // つかんだあとに盤面が変わっていたら（配る・元に戻すなど）何もしない
+  const still = d.src.type==='col'
+    ? S.cols[d.src.col] && S.cols[d.src.col].slice(d.src.idx).map(c=>c.id).join(',')===d.ids && canGrab(d.src.col, d.src.idx)
+    : S.pocket[d.src.slot] && String(S.pocket[d.src.slot].id)===d.ids;
+  if(!still || ui.busy){ render(); return; }
+  if(!d.started){ autoMove(d.src); return; }
+  const h = hitTest(e.clientX, e.clientY);
+  if(h && h.kind==='col' && validCol(d.src, h.col)){
+    if(d.src.type==='col') doMove(d.src.col, d.src.idx, h.col); else fromPocket(d.src.slot, h.col);
+    return;
+  }
+  if(h && h.kind==='pocket' && validPocket(d.src, h.slot)){ toPocket(d.src.col, h.slot); return; }
+  render();
+}
+function autoMove(src){
+  const b = src.type==='col' ? S.cols[src.col][src.idx] : S.pocket[src.slot];
+  const from = src.type==='col' ? src.col : -1;
+  const cand = [];
+  for(let t=0;t<10;t++){
+    if(t===from || S.locks[t]>0) continue;
+    const c = S.cols[t];
+    if(c.length){ const top = c[c.length-1]; if(top.up && top.r===b.r+1) cand.push({t, sc: top.s===b.s ? 3 : 2}); }
+    else if(!(src.type==='col' && src.idx===0)) cand.push({t, sc:1});
+  }
+  if(!cand.length){
+    const el = src.type==='col' ? document.querySelector(`.col[data-col="${src.col}"] .card[data-idx="${src.idx}"]`) : document.querySelector(`.pslot[data-pslot="${src.slot}"] .card`);
+    if(el) shake(el);
+    return;
+  }
+  cand.sort((a,b2) => b2.sc - a.sc || a.t - b2.t);
+  if(src.type==='col') doMove(src.col, src.idx, cand[0].t); else fromPocket(src.slot, cand[0].t);
+}
+
+/* ---------- ボタン ---------- */
+async function onClick(e){
+  const a = e.target.closest('[data-act]'); if(!a) return;
+  if(!els.modal.hidden || ui.drag || ui.busy) return;
+  const act = a.dataset.act;
+  if(a.closest('#pop') && act!=='pop-use') closePop();
+  if(act==='menu') return openMenu(a);
+  if(act==='logtoggle'){ ui.logOpen = !ui.logOpen; render(); return; }
+  if(act==='deal') return deal();
+  if(act==='skillinfo') return openSkillPop(a, a.dataset.skill);
+  if(act==='pop-use'){ closePop(); return useSkill(a.dataset.skill); }
+  if(act==='tip'){ return openTipPop(a); }
+  if(act==='cancel'){ resetUi(); render(); return; }
+  if(act==='undo') return undo();
+  if(act==='hint') return showHint();
+  if(act==='help') return openHelp();
+  if(act==='records') return openRecords();
+  if(act==='settings') return openSettings();
+  if(act==='new'){ if(await confirmLeave('新しく配り直しますか？')) newGame(); return; }
+  if(act==='restart'){
+    if(!initialSnap) return;
+    if(await confirmLeave('同じ配りで最初からやり直しますか？')){ const h = S.hints||0; S = JSON.parse(initialSnap); S.hints = h; undoStack = []; resetUi(); save(); render(); }
+  }
+}
+function undo(){
+  if(ui.busy || ui.drag || S.won || !undoStack.length || !els.modal.hidden) return;
+  const h = S.hints||0;
+  S = JSON.parse(undoStack.pop());
+  S.hints = h;
+  resetUi(); save(); render();
+}
+function save(){ ui.hints = null; ui.hintShow = null; closePop(); store(KEY_GAME, {S, initialSnap}); }
+
+/* ---------- 起動 ---------- */
+function start(data){
+  const saved = (data && data.S) ? data : load(KEY_GAME);
+  if(saved && saved.S && saved.S.v===2 && !saved.S.won){ S = saved.S; initialSnap = saved.initialSnap || JSON.stringify(S); render(); }
+  else newGame();
+  els.game.addEventListener('pointerdown', onDown);
+  document.addEventListener('pointerdown', e => {
+    if(els.modal.hidden && fxL() && fxL().querySelector('.fx-banner')) skipFx();
+    if(!els.pop.hidden && !els.pop.contains(e.target) && !e.target.closest('[data-act="skillinfo"],[data-act="tip"],[data-act="menu"]')) closePop();
+    hideTip();
+  }, true);
+  document.addEventListener('pointerover', e => {
+    if(e.pointerType!=='mouse' || ui.drag) return;
+    const el = e.target.closest('[data-tip]');
+    if(el) showTip(el); else hideTip();
+  });
+  window.addEventListener('scroll', () => { closePop(); hideTip(); }, {passive:true});
+  document.addEventListener('click', onClick);
+  document.addEventListener('keydown', e => {
+    if(els.modal.hidden && fxL() && fxL().querySelector('.fx-banner') && [' ','Enter','Escape'].includes(e.key)){ e.preventDefault(); skipFx(); return; }
+    if((e.ctrlKey || e.metaKey) && e.key.toLowerCase()==='z'){ e.preventDefault(); undo(); }
+    else if(e.key==='Escape' && !els.pop.hidden){ closePop(); }
+    else if(e.key==='Escape' && els.modal.hidden && (ui.mode || ui.bind)){ resetUi(); render(); }
+    else if(e.key.toLowerCase()==='h' && !e.ctrlKey && !e.metaKey && els.modal.hidden){ showHint(); }
+  });
+  let raf = 0;
+  window.addEventListener('resize', () => { closePop(); hideTip(); cancelAnimationFrame(raf); raf = requestAnimationFrame(() => { if(!ui.drag) render(); }); });
+  setInterval(() => {
+    if(S && S.started && !S.won && document.visibilityState==='visible'){ S.elapsed++; els.clock.textContent = fmtTime(S.elapsed); if(S.elapsed%10===0 && !ui.busy) store(KEY_GAME, {S, initialSnap}); }
+  }, 1000);
+  try{ window.claude?.hot?.snapshot?.(() => ({S, initialSnap})); }catch(e){}
+  if(document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if(!ui.drag) render(); });
+  window.__spider = {get S(){return S;}, set S(v){S=v;}, ui, doMove, deal, render, runOK, canDrop, settle, newGame, applyEvent, badEvent, skillHints, encCols, usePeek, useDig, useSkill, skipFx, listHints, searchHints, showHint, toPocket, fromPocket, undo, get undoLen(){return undoStack.length;}, settings:()=>settings, setSettings:v=>{settings=v;}, EV};
+}
+const hot = window.claude?.hot;
+if(hot && hot.ready) hot.ready(start); else start(hot?.data ?? {});
+})();
+</script>
+</body></html>
